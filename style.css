@@ -178,3 +178,4 @@ h3 small { font-family: var(--sans); font-weight: 400; }
 #pk_list .btn.wide { margin-top: 10px; }
 .kind-sel { width: auto; display: inline-block; margin: 0 4px 0 auto; padding: 4px 6px; font-size: 13px; }
 .extras li > span { flex: 1; }
+#my_q { margin: 6px 0 10px; }

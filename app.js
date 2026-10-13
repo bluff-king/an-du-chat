@@ -208,7 +208,6 @@ function viewToday() {
   const cards = SLOTS.map(({ key, name }) => slotCard(key, name)).join('');
   const ex = extras(curDay).map((x, i) => `<li>${esc(dishName(x.d))}${x.q !== 1 ? ' ×' + x.q : ''}
       <button class="x" data-act="rmExtra" data-i="${i}" aria-label="Xoá">×</button></li>`).join('');
-  const t = dayTotals(curDay);
   return `
     <header class="head">
       <button class="nav" data-act="day" data-n="-1" aria-label="Hôm trước">‹</button>
@@ -231,11 +230,45 @@ function viewToday() {
       <div class="row"><h3>Ăn thêm ngoài thực đơn</h3><button class="btn sm" data-act="addExtra">+ Thêm</button></div>
       ${ex ? `<ul class="extras">${ex}</ul>` : '<p class="muted">Trà sữa, nước ngọt, hoa quả, sữa thêm… bấm “+ Thêm”.</p>'}
     </section>
-    <section class="card">
-      <h3>Trong ngày</h3>
-      <p class="muted">Đậm = đã ăn · nhạt = còn theo kế hoạch.</p>
-      ${bars(t.eaten, t.proj, 1, ['k', 'mg', 'zn', 'ca', 'fib', 'pro', 'vita', 'vitc', 'sat', 'sug'])}
+    ${myCard()}`;
+}
+
+// Thẻ quản lý món & nguyên liệu tự tạo — dùng ở tab Hôm nay và Thực đơn. Mọi bảng chọn món đọc chung S.custom.
+let myKind = 'nha';
+function myCard() {
+  const customs = Object.entries(S.custom).map(([id, d]) => `<li><span>${esc(d.name)}</span>
+      <select class="kind-sel" data-kindsel="${id}" aria-label="Loại món">${Object.entries(KIND_NAMES).map(([k, n]) => `<option value="${k}" ${k === d.kind ? 'selected' : ''}>${n}</option>`).join('')}</select>
+      <button class="x" data-act="delCustom" data-id="${id}" aria-label="Xoá">×</button></li>`).join('');
+  const myFoods = Object.entries(S.foods || {}).map(([id, f]) => `<li><span>${esc(f.name)}</span><small class="muted">nguyên liệu${f.src === 'que' ? ' · quê' : ''}</small>
+      <button class="x" data-act="delFood" data-id="${id}" aria-label="Xoá">×</button></li>`).join('');
+  return `<section class="card">
+      <h3>Món & nguyên liệu của tôi</h3>
+      <p class="muted">Tạo ở đây là có ngay trong mọi bảng “Đổi món” và “Thực đơn”.</p>
+      <input type="text" id="my_q" placeholder="Tên món mới, VD: trứng vịt lộn, nấm xào tỏi" autocomplete="off">
+      <div class="seg small">${Object.entries(KIND_NAMES).map(([k, n]) => `<button class="${k === myKind ? 'on' : ''}" data-act="myKind" data-k="${k}">${n}</button>`).join('')}</div>
+      <button class="btn primary wide" data-act="myQuick">＋ Thêm món${S.settings.gkey ? ' (✨ Gemini ước lượng)' : ''}</button>
+      <div id="my_msg"></div>
+      <div class="actions" style="margin-top:10px"><button class="btn sm" data-act="newCustom">+ Tạo món theo nguyên liệu</button>
+        <button class="btn sm" data-act="newFood">+ Nguyên liệu mới</button></div>
+      <div id="newFood"></div>
+      ${customs || myFoods ? `<ul class="extras">${customs}${myFoods}</ul>` : ''}
     </section>`;
+}
+
+// Tạo món chỉ từ tên: Gemini ước lượng 1 suất; không có key thì lấy nguyên liệu trùng tên (nếu có).
+async function createQuickDish(name, kind, onStatus) {
+  let d;
+  if (S.settings.gkey) {
+    const r = await estimateDish(kind === 'ngoai' ? name + ' (mua ăn ngoài)' : name, onStatus);
+    d = { n: r.n, ...(r.price ? { price: r.price } : {}) };
+  } else {
+    const f = Object.entries(FOODS).find(([, x]) => bareText(name).includes(bareText(x.name).split(' ')[0]));
+    d = f ? { ing: [[f[0], defaultG(f[0])]] } : { n: zero() };
+  }
+  const id = 'c_' + Date.now().toString(36);
+  S.custom[id] = { name, kind, ...d };
+  save();
+  return id;
 }
 
 function slotCard(key, name) {
@@ -434,16 +467,10 @@ function viewPlan() {
       ${open ? slots : `<p class="muted one">${esc(['trua', 'toi'].map(k => (p[k] || []).filter(id => id !== 'com').map(dishName).join(', ')).join(' / '))}</p>`}
     </section>`;
   }).join('');
-  const customs = Object.entries(S.custom).map(([id, d]) => `<li><span>${esc(d.name)}</span>
-      <select class="kind-sel" data-kindsel="${id}" aria-label="Loại món">${Object.entries(KIND_NAMES).map(([k, n]) => `<option value="${k}" ${k === d.kind ? 'selected' : ''}>${n}</option>`).join('')}</select>
-      <button class="x" data-act="delCustom" data-id="${id}" aria-label="Xoá">×</button></li>`).join('');
-  const myFoods = Object.entries(S.foods || {}).map(([id, f]) => `<li>${esc(f.name)} <small class="muted">nguyên liệu${f.src === 'que' ? ' · quê' : ''}</small>
-      <button class="x" data-act="delFood" data-id="${id}" aria-label="Xoá">×</button></li>`).join('');
   return `
     <header class="head plain"><div style="flex:1"><div class="row"><h1>Thực đơn tuần</h1><button class="btn sm primary" data-act="newCustom">+ Tạo món</button></div><p class="sub">Bấm vào một bữa để sửa thực đơn mẫu (áp cho mọi tuần). Dòng ↳ là những gì tuần này bạn đã ghi khác đi.</p></div></header>
     ${days}
-    <section class="card"><div class="row"><h3>Món của tôi</h3><button class="btn sm" data-act="newCustom">+ Tạo món</button></div>
-      ${customs || myFoods ? `<ul class="extras">${customs}${myFoods}</ul>` : '<p class="muted">Tự tạo món từ nguyên liệu (ví dụ món quê mới, món có thêm nấm, mộc nhĩ). Thiếu nguyên liệu thì bấm “+ Nguyên liệu mới” trong lúc tạo món.</p>'}</section>
+    ${myCard()}
     <button class="btn ghost wide" data-act="resetPlan">Khôi phục thực đơn mẫu</button>`;
 }
 
@@ -757,6 +784,7 @@ document.addEventListener('click', e => {
         const food = { ...f, name, src: $('#nf_src').value };
         S.foods = { ...(S.foods || {}), [id]: food };
         FOODS[id] = food; save();
+        if (!$('#c_ings')) { render(); toast(`Đã thêm nguyên liệu “${name}”`); return; }
         // Gắn vào ô trống đầu tiên (hoặc dòng mới), giữ nguyên những gì đã nhập.
         document.querySelectorAll('#c_ings select').forEach(sel => sel.insertAdjacentHTML('beforeend', `<option value="${id}">${esc(name)}</option>`));
         let sel = [...document.querySelectorAll('#c_ings select')].find(x => !x.value);
@@ -779,22 +807,21 @@ document.addEventListener('click', e => {
     case 'pickAdd': picker.sel.push(el.dataset.id); picker.q = ''; drawPicker(); break;
     case 'qKind': picker.qKind = el.dataset.k; drawPickList(); break;
     case 'quickDish': {
-      const name = picker.q.trim();
-      const kind = picker.qKind || picker.kind;
-      const add = d => {
-        const id = 'c_' + Date.now().toString(36);
-        S.custom[id] = { name, kind, ...d };
-        save(); picker.sel.push(id); picker.q = ''; drawPicker(); toast(`Đã thêm “${name}” — lần sau gõ là thấy`);
-      };
-      if (!S.settings.gkey) {
-        // Không có AI: lấy nguyên liệu trùng tên nếu có, không thì tạo món chưa có số liệu.
-        const f = Object.entries(FOODS).find(([, x]) => bareText(name).includes(bareText(x.name).split(' ')[0]));
-        add(f ? { ing: [[f[0], defaultG(f[0])]] } : { n: zero() });
-        break;
-      }
+      const name = picker.q.trim(), kind = picker.qKind || picker.kind;
       el.disabled = true;
-      estimateDish(kind === 'ngoai' ? name + ' (mua ăn ngoài)' : name, msg => { el.textContent = msg; }).then(r => add({ n: r.n, ...(r.price ? { price: r.price } : {}) }))
-        .catch(err => { el.disabled = false; el.textContent = `＋ Thêm “${name}”`; $('#pk_msg').innerHTML = `<p class="note">${esc(err.message)}</p>`; });
+      createQuickDish(name, kind, msg => { el.textContent = msg; }).then(id => {
+        picker.sel.push(id); picker.q = ''; drawPicker(); toast(`Đã thêm “${name}” — lần sau gõ là thấy`);
+      }).catch(err => { el.disabled = false; el.textContent = `＋ Thêm “${name}”`; $('#pk_msg').innerHTML = `<p class="note">${esc(err.message)}</p>`; });
+      break;
+    }
+    case 'myKind': myKind = el.dataset.k; document.querySelectorAll('[data-act=myKind]').forEach(b => b.classList.toggle('on', b === el)); break;
+    case 'myQuick': {
+      const name = $('#my_q').value.trim();
+      if (!name) { toast('Gõ tên món trước'); $('#my_q').focus(); break; }
+      el.disabled = true;
+      createQuickDish(name, myKind, msg => { el.textContent = msg; }).then(() => {
+        render(); toast(`Đã thêm “${name}” (${KIND_NAMES[myKind]})`);
+      }).catch(err => { el.disabled = false; el.textContent = '＋ Thêm món'; $('#my_msg').innerHTML = `<p class="note">${esc(err.message)}</p>`; });
       break;
     }
     case 'pickRm': picker.sel.splice(+el.dataset.i, 1); drawPicker(); break;
