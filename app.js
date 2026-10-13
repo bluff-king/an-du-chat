@@ -468,7 +468,7 @@ function viewPlan() {
     </section>`;
   }).join('');
   return `
-    <header class="head plain"><div style="flex:1"><div class="row"><h1>Thực đơn tuần</h1><button class="btn sm primary" data-act="newCustom">+ Tạo món</button></div><p class="sub">Bấm vào một bữa để sửa thực đơn mẫu (áp cho mọi tuần). Dòng ↳ là những gì tuần này bạn đã ghi khác đi.</p></div></header>
+    <header class="head plain"><div style="flex:1"><h1>Thực đơn tuần</h1><p class="sub">Bấm vào một bữa để sửa thực đơn mẫu (áp cho mọi tuần). Dòng ↳ là những gì tuần này bạn đã ghi khác đi.</p></div></header>
     ${days}
     ${myCard()}
     <button class="btn ghost wide" data-act="resetPlan">Khôi phục thực đơn mẫu</button>`;
@@ -570,14 +570,15 @@ function drawPicker() {
 function drawPickList() {
   const p = picker;
   const q = bareText(p.q);
-  const all = Object.entries({ ...DISHES, ...S.custom });
+  // Món tự tạo lên đầu, mới nhất trước.
+  const all = [...Object.entries(S.custom).reverse(), ...Object.entries(DISHES)];
   const items = q ? all.filter(([, d]) => bareText(d.name).includes(q)) : all.filter(([, d]) => d.kind === p.kind);
   $('#pk_kinds').hidden = !!q;
-  $('#pk_list').innerHTML = `<div class="pick-list">${items.map(([id, d]) => `<button class="pick" data-act="pickAdd" data-id="${id}">${esc(d.name)}${d.price ? `<small>~${d.price}k</small>` : q ? `<small>${KIND_NAMES[d.kind]}</small>` : ''}</button>`).join('')}</div>
+  $('#pk_list').innerHTML = `<div class="pick-list">${items.map(([id, d]) => `<button class="pick" data-act="pickAdd" data-id="${id}">${S.custom[id] ? '★ ' : ''}${esc(d.name)}${d.price ? `<small>~${d.price}k</small>` : q ? `<small>${KIND_NAMES[d.kind]}</small>` : ''}</button>`).join('')}</div>
     ${q ? `<p class="muted">Không thấy? Thêm món mới — chọn loại:</p>
       <div class="seg small">${Object.entries(KIND_NAMES).map(([k, n]) => `<button class="${k === (p.qKind || p.kind) ? 'on' : ''}" data-act="qKind" data-k="${k}">${n}</button>`).join('')}</div>
       <button class="btn wide" data-act="quickDish">＋ Thêm “${esc(p.q.trim())}”${S.settings.gkey ? ' (✨ Gemini ước lượng)' : ''}</button><div id="pk_msg"></div>`
-        : '<button class="btn ghost sm" data-act="newCustom">+ Tạo món theo nguyên liệu</button>'}`;
+        : ''}`;
 }
 const bareText = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase().trim();
 function closeSheet() { $('#sheet').classList.remove('show'); $('#sheet').innerHTML = ''; picker = null; }
