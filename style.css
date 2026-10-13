@@ -162,3 +162,14 @@ summary { cursor: pointer; padding: 8px 0; font-weight: 600; }
 .swatch { width: 40px; height: 40px; border-radius: 20px; border: 2px solid var(--line); cursor: pointer; }
 .swatch.on { border-color: var(--ink); box-shadow: 0 0 0 3px var(--card) inset; }
 .bar.ok .num b { color: var(--green-ink); } .bar.mid .num b { color: var(--yellow-ink); } .bar.bad .num b { color: var(--red-ink); }
+
+.shop li.swipe { display: block; position: relative; overflow: hidden; padding: 0; }
+.swipe-main { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: baseline; padding: 10px 0; background: var(--card); position: relative; z-index: 1; transition: transform .2s; cursor: pointer; }
+.swipe.open .swipe-main { transform: translateX(-140px); }
+.swipe-actions { position: absolute; right: 0; top: 0; bottom: 0; width: 140px; display: flex; }
+.swipe-actions button { flex: 1; border: 0; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.sw-sub { background: var(--blue); color: var(--blue-ink); }
+.sw-del { background: var(--red); color: var(--red-ink); }
+.pslot .actual { display: block; color: var(--blue-ink); font-size: 14px; margin-top: 4px; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 4px; background: var(--blue-ink); vertical-align: middle; }
+h3 small { font-family: var(--sans); font-weight: 400; }

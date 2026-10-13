@@ -208,3 +208,11 @@ const TIPS = {
   sat:  'Mỡ bão hòa cao: bớt ba chỉ, da gà, xúc xích, đồ chiên — tốt cho gan và mỡ máu.',
   sug:  'Đường thêm cao: bớt trà sữa/nước ngọt; sữa socola 1 bịch/ngày vẫn ổn.',
 };
+
+// Nhóm để gợi ý đổi cùng loại ở trang Đi chợ (vuốt trái một dòng).
+const FOOD_GROUPS = {
+  'Rau, củ': ['rau_muong', 'bap_cai', 'cai_ngot', 'ca_chua', 'hanh_tay', 'ca_rot', 'su_hao', 'sup_lo', 'gia'],
+  'Quả': ['chuoi', 'oi', 'cam'],
+  'Đạm': ['trung', 'dauphu', 'ga_dui', 'ga_uc', 'gio', 'thit_bam', 'xuc_xich', 'bo'],
+  'Khác': ['lac', 'sua_socola', 'sua_kd', 'banhgao', 'bun'],
+};

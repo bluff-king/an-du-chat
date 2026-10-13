@@ -66,13 +66,31 @@ const addInto = (acc, v, k = 1) => { for (let i = 0; i < acc.length; i++) acc[i]
 const dish = id => S.custom[id] || DISHES[id];
 const dishName = id => (dish(id) ? dish(id).name : '(món đã xoá)');
 
-function dishNut(id) {
+const shopOf = ws => ({ subs: {}, skip: [], force: {}, have: [], ...((S.shop && S.shop[ws]) || {}) });
+function shopEdit(ws) {
+  S.shop = S.shop || {};
+  S.shop[ws] = { ...shopOf(ws) };
+  return S.shop[ws];
+}
+// Nguyên liệu sau khi áp các thay đổi ở trang Đi chợ của tuần đó ('' = đã xoá).
+const subFood = (f, subs) => (subs && f in subs ? subs[f] : f);
+
+function dishNut(id, subs) {
   const d = dish(id);
   if (!d) return zero();
   if (d.n) return d.n;
   const acc = zero();
-  for (const [f, g] of d.ing) if (FOODS[f]) addInto(acc, FOODS[f].n, g / 100);
+  for (const [f0, g] of d.ing) { const f = subFood(f0, subs); if (FOODS[f]) addInto(acc, FOODS[f].n, g / 100); }
   return acc;
+}
+
+// Tên món kèm ghi chú nếu nguyên liệu đã bị đổi/xoá trong tuần.
+function dishLabel(id, subs) {
+  const d = dish(id);
+  if (!d || !d.ing || !subs) return dishName(id);
+  const notes = d.ing.map(([f]) => f).filter(f => f in subs && FOODS[f])
+    .map(f => subs[f] ? `${FOODS[f].name.toLowerCase()} → ${FOODS[subs[f]].name.toLowerCase()}` : `bỏ ${FOODS[f].name.toLowerCase()}`);
+  return notes.length ? `${d.name} (${notes.join(', ')})` : d.name;
 }
 
 function planFor(date) { return (S.plan[parse(date).getDay()] || {}); }
@@ -90,9 +108,9 @@ function meal(date, slot) {
 }
 const extras = date => (S.logs[date] && S.logs[date].extra) || [];
 
-function mealNut(m) {
+function mealNut(m, subs) {
   const acc = zero();
-  for (const id of m.dishes) addInto(acc, dishNut(id), m.por);
+  for (const id of m.dishes) addInto(acc, dishNut(id, subs), m.por);
   for (const x of m.items || []) addInto(acc, x.n, m.por);
   return acc;
 }
@@ -100,9 +118,10 @@ function mealNut(m) {
 // eaten: những gì coi như đã ăn; proj: eaten + phần kế hoạch chưa tới.
 function dayTotals(date) {
   const eaten = zero(), proj = zero();
+  const subs = shopOf(weekStart(date)).subs;
   for (const { key } of SLOTS) {
     const m = meal(date, key);
-    const v = mealNut(m);
+    const v = mealNut(m, subs);
     if (m.st !== 'plan' && date <= todayKey()) addInto(eaten, v);
     addInto(proj, v);
   }
@@ -141,7 +160,7 @@ let tab = 'today';
 let curDay = todayKey();
 let curWeek = weekStart(todayKey());
 let shopMode = 'this';
-let planOpen = null;
+const planOpen = new Set();
 let noteDraft = '';
 let whatEatHtml = '';
 let weekAiHtml = '';
@@ -223,7 +242,8 @@ function slotCard(key, name) {
   const label = { ok: '✓ Đã ăn', swap: '🔄 Đã đổi món', skip: '✕ Bỏ bữa',
                   assumed: 'Chưa xác nhận — tạm tính theo thực đơn', plan: 'Theo thực đơn' }[m.st];
   const confirmed = ['ok', 'swap', 'skip'].includes(m.st);
-  const names = [...m.dishes.map(id => esc(dishName(id))), ...(m.items || []).map(x => '✨ ' + esc(x.name))];
+  const subs = shopOf(weekStart(curDay)).subs;
+  const names = [...m.dishes.map(id => esc(dishLabel(id, subs))), ...(m.items || []).map(x => '✨ ' + esc(x.name))];
   const list = names.length ? names.map(n => `<li>${n}</li>`).join('') : '<li class="muted">Không ăn</li>';
   const por = m.st !== 'skip' ? `<div class="chips">${PORTIONS.map(([v, n]) =>
       `<button class="chip ${confirmed && m.por === v ? 'on' : ''}" data-act="por" data-slot="${key}" data-v="${v}">${n}</button>`).join('')}</div>` : '';
@@ -282,6 +302,7 @@ function shopping() {
   const ws = shopMode === 'this' ? thisWs : addDays(thisWs, 7);
   const from = shopMode === 'this' ? todayKey() : ws;
   const need = {};             // foodId -> gam theo kế hoạch
+  const sh = shopOf(ws);
   let outCost = 0;
   for (let d = from; d <= addDays(ws, 6); d = addDays(d, 1)) {
     for (const { key } of SLOTS) {
@@ -291,7 +312,10 @@ function shopping() {
         const ds = dish(id);
         if (!ds) continue;
         if (ds.n) { outCost += ds.price || 0; continue; }
-        for (const [f, g] of ds.ing) if (FOODS[f] && FOODS[f].src === 'mua') need[f] = (need[f] || 0) + g * m.por;
+        for (const [f0, g] of ds.ing) {
+          const f = subFood(f0, sh.subs);
+          if (FOODS[f] && FOODS[f].src === 'mua' && !sh.have.includes(f)) need[f] = (need[f] || 0) + g * m.por;
+        }
       }
     }
   }
@@ -302,11 +326,17 @@ function shopping() {
   let proj;
   if (shopMode === 'this') proj = weekTotals(ws).proj.slice();
   else { proj = zero(); for (let i = 0; i < 7; i++) { const d = addDays(ws, i);
-    for (const { key } of SLOTS) for (const id of planFor(d)[key] || []) addInto(proj, dishNut(id)); } }
+    for (const { key } of SLOTS) for (const id of planFor(d)[key] || []) addInto(proj, dishNut(id, sh.subs)); } }
 
   // Tham lam: lấy chất đang thiếu nhất, mua món rẻ nhất tính theo chất đó, lặp lại.
   let left = S.settings.budget - planCost;
   const add = {}, why = {}, stuck = new Set();
+  // Món người dùng tự chọn thay ở mục "Mua thêm" được mua trước, rồi mới tính phần còn thiếu.
+  for (const [id, g] of Object.entries(sh.force)) {
+    if (!FOODS[id]) continue;
+    add[id] = g; addInto(proj, FOODS[id].n, g / 100); left -= g / 100 * FOODS[id].price;
+    why[id] = new Set(['bạn chọn']);
+  }
   const goal = k => T()[k] * 7 * 0.95;
   for (let it = 0; it < 30; it++) {
     const lacking = FOCUS.filter(k => k !== 'fe' && !stuck.has(k) && proj[NI[k]] < goal(k))
@@ -314,7 +344,8 @@ function shopping() {
     if (!lacking.length) break;
     const k = lacking[0];
     const cands = Object.entries(FOODS).filter(([id, f]) => f.src === 'mua' && f.max && f.n[NI[k]] > 0
-        && !S.settings.hidden.includes(id) && (add[id] || 0) < f.max && f.n[NI.sug] === 0)
+        && !S.settings.hidden.includes(id) && !sh.skip.includes(id) && !(id in sh.force)
+        && (add[id] || 0) < f.max && f.n[NI.sug] === 0)
       .map(([id, f]) => [id, f.n[NI[k]] / f.price / (f.n[NI.sat] > 5 ? 3 : 1)])
       .sort((a, b) => b[1] - a[1]);
     if (!cands.length || left <= 0) { stuck.add(k); continue; }
@@ -333,7 +364,7 @@ function shopping() {
   const extraRows = Object.entries(add).map(([f, g]) => ({ ...row(f, g), why: [...why[f]] }));
   const extraCost = extraRows.reduce((s, r) => s + r.cost, 0);
   const stillLow = FOCUS.filter(k => k !== 'fe' && proj[NI[k]] < T()[k] * 7 * 0.8);
-  return { planRows, planCost, extraRows, extraCost, outCost, stillLow, proj };
+  return { ws, sh, planRows, planCost, extraRows, extraCost, outCost, stillLow, proj };
 }
 
 function row(f, g) {
@@ -346,19 +377,30 @@ const money = k => `${Math.round(k)}k`;
 
 function viewShop() {
   const r = shopping();
-  const list = rows => rows.map(x => `<li><span>${esc(x.name)}<small>${x.why ? ' — bù ' + x.why.join(', ') : ''}</small></span>
-      <span class="q">${x.qty}</span><span class="c">${money(x.cost)}</span></li>`).join('');
+  // Mỗi dòng: vuốt trái (hoặc bấm) để hiện nút Đổi / Xoá.
+  const list = (rows, kind) => rows.map(x => `<li class="swipe" data-food="${x.f}" data-kind="${kind}" data-g="${Math.round(x.g)}">
+      <div class="swipe-actions"><button class="sw-sub" data-act="shopSub">Đổi</button><button class="sw-del" data-act="shopDel">Xoá</button></div>
+      <div class="swipe-main" data-act="swipeToggle"><span>${esc(x.name)}<small>${x.why ? ' — ' + (x.why.includes('bạn chọn') ? 'bạn chọn' : 'bù ' + x.why.join(', ')) : ''}</small></span>
+      <span class="q">${x.qty}</span><span class="c">${money(x.cost)}</span></div></li>`).join('');
+  const changes = [
+    ...Object.entries(r.sh.subs).filter(([f]) => FOODS[f]).map(([f, t]) => t ? `${FOODS[f].name} → ${FOODS[t].name}` : `Bỏ ${FOODS[f].name}`),
+    ...r.sh.have.filter(f => FOODS[f]).map(f => `Không mua ${FOODS[f].name} (nhà còn)`),
+    ...r.sh.skip.filter(f => FOODS[f]).map(f => `Không mua thêm ${FOODS[f].name}`),
+  ];
   return `
     <header class="head plain"><div><h1>Đi chợ</h1><p class="sub">Ngân sách ${money(S.settings.budget)}/tuần (không tính ăn ngoài, đồ quê)</p></div></header>
     <div class="seg">
       <button class="${shopMode === 'this' ? 'on' : ''}" data-act="shopMode" data-v="this">Phần còn lại tuần này</button>
       <button class="${shopMode === 'next' ? 'on' : ''}" data-act="shopMode" data-v="next">Cả tuần sau</button>
     </div>
+    <p class="muted">Vuốt trái một dòng (hoặc bấm vào) để đổi sang thứ khác hoặc xoá.</p>
+    ${changes.length ? `<section class="card"><div class="row"><h3>Đã thay đổi tuần này</h3><button class="btn sm ghost" data-act="shopReset">Khôi phục</button></div>
+      <ul class="tips">${changes.map(c => `<li>${esc(c)}</li>`).join('')}</ul><p class="muted">Món trong thực đơn được tính theo nguyên liệu mới.</p></section>` : ''}
     <section class="card"><div class="row"><h3>Theo thực đơn</h3><b>${money(r.planCost)}</b></div>
-      ${r.planRows.length ? `<ul class="shop">${list(r.planRows)}</ul>` : '<p class="muted">Không cần mua gì thêm cho thực đơn.</p>'}
+      ${r.planRows.length ? `<ul class="shop">${list(r.planRows, 'plan')}</ul>` : '<p class="muted">Không cần mua gì thêm cho thực đơn.</p>'}
       <p class="muted">Đồ quê, gạo, dầu, gia vị không tính vào đây.</p></section>
     <section class="card accent"><div class="row"><h3>Mua thêm để đủ chất</h3><b>${money(r.extraCost)}</b></div>
-      ${r.extraRows.length ? `<ul class="shop">${list(r.extraRows)}</ul>` : '<p class="muted">Thực đơn đã gần đủ — không cần mua thêm.</p>'}
+      ${r.extraRows.length ? `<ul class="shop">${list(r.extraRows, 'extra')}</ul>` : '<p class="muted">Thực đơn đã gần đủ — không cần mua thêm.</p>'}
       ${r.stillLow.length ? `<p class="note">Vẫn còn thiếu: ${r.stillLow.map(k => NUTRIENTS[NI[k]].name).join(', ')}.</p>
         <ul class="tips">${r.stillLow.map(k => `<li>${esc(TIPS[k])}</li>`).join('')}</ul>` : ''}
     </section>
@@ -369,20 +411,32 @@ function viewShop() {
 // ---------- Thực đơn ----------
 const ORDER = [1, 2, 3, 4, 5, 6, 0];
 function viewPlan() {
+  const ws = weekStart(todayKey());
+  const subs = shopOf(ws).subs;
   const days = ORDER.map(wd => {
     const p = S.plan[wd] || {};
-    const open = planOpen === wd;
+    const date = addDays(ws, (wd + 6) % 7);
+    const open = planOpen.has(wd);
+    // Tuần này đã ghi khác thực đơn mẫu (đổi món, bỏ bữa, ghi nhanh, lịch sắp tới) thì hiện thêm 1 dòng.
+    const actual = key => {
+      const m = meal(date, key);
+      if (!['swap', 'skip'].includes(m.st)) return '';
+      const what = m.st === 'skip' ? 'Bỏ bữa'
+        : [...m.dishes.map(id => dishLabel(id, subs)), ...(m.items || []).map(x => '✨ ' + x.name)].join(' · ');
+      return `<span class="actual">↳ ${fmtShort(date)}${date > todayKey() ? ' (dự kiến)' : ''}: ${esc(what)}</span>`;
+    };
     const slots = SLOTS.map(({ key, name }) => `<div class="pslot" data-act="editPlan" data-wd="${wd}" data-slot="${key}">
-        <b>${name}</b><span>${(p[key] || []).map(id => esc(dishName(id))).join(' · ') || '<i class="muted">trống</i>'}</span></div>`).join('');
+        <b>${name}</b><span>${(p[key] || []).map(id => esc(dishLabel(id, subs))).join(' · ') || '<i class="muted">trống</i>'}${actual(key)}</span></div>`).join('');
+    const changed = SLOTS.some(({ key }) => actual(key));
     return `<section class="card day ${open ? 'open' : ''}">
-      <div class="row" data-act="togglePlan" data-wd="${wd}"><h3>${WD[wd]}</h3><span class="muted">${open ? '▴' : '▾'}</span></div>
+      <div class="row" data-act="togglePlan" data-wd="${wd}"><h3>${WD[wd]} <small>${fmtShort(date)}</small>${changed ? ' <span class="dot" title="Tuần này đã ghi khác thực đơn"></span>' : ''}</h3><span class="muted">${open ? '▴' : '▾'}</span></div>
       ${open ? slots : `<p class="muted one">${esc(['trua', 'toi'].map(k => (p[k] || []).filter(id => id !== 'com').map(dishName).join(', ')).join(' / '))}</p>`}
     </section>`;
   }).join('');
   const customs = Object.entries(S.custom).map(([id, d]) => `<li>${esc(d.name)} <small class="muted">${KIND_NAMES[d.kind]}</small>
       <button class="x" data-act="delCustom" data-id="${id}" aria-label="Xoá">×</button></li>`).join('');
   return `
-    <header class="head plain"><div><h1>Thực đơn tuần</h1><p class="sub">Bấm vào một ngày để sửa. Tối nấu dư mang cơm trưa hôm sau.</p></div></header>
+    <header class="head plain"><div><h1>Thực đơn tuần</h1><p class="sub">Bấm vào một bữa để sửa thực đơn mẫu (áp cho mọi tuần). Dòng ↳ là những gì tuần này bạn đã ghi khác đi.</p></div></header>
     ${days}
     <section class="card"><div class="row"><h3>Món của tôi</h3><button class="btn sm" data-act="newCustom">+ Tạo món</button></div>
       ${customs ? `<ul class="extras">${customs}</ul>` : '<p class="muted">Tự tạo món từ nguyên liệu (ví dụ món quê mới).</p>'}</section>
@@ -482,6 +536,26 @@ function drawPicker() {
 }
 function closeSheet() { $('#sheet').classList.remove('show'); $('#sheet').innerHTML = ''; picker = null; }
 
+// ---------- Chọn thực phẩm thay thế (trang Đi chợ) ----------
+let foodPick = null;
+function openFoodPicker(from, kind, g) {
+  foodPick = { from, kind, g };
+  const group = Object.entries(FOOD_GROUPS).find(([, ids]) => ids.includes(from));
+  const order = group ? [group, ...Object.entries(FOOD_GROUPS).filter(x => x !== group)] : Object.entries(FOOD_GROUPS);
+  const opt = id => {
+    const f = FOODS[id];
+    return `<button class="pick" data-act="pickFood" data-id="${id}">${esc(f.name)}<small>~${money(g / 100 * f.price)}</small></button>`;
+  };
+  $('#sheet').innerHTML = `<div class="sheet-body">
+    <div class="row"><h3>Đổi ${esc(FOODS[from].name)} thành…</h3><button class="x" data-act="pickClose" aria-label="Đóng">×</button></div>
+    ${order.map(([name, ids]) => {
+      const list = ids.filter(id => id !== from && FOODS[id] && !S.settings.hidden.includes(id));
+      return list.length ? `<p class="muted">${name}</p><div class="pick-list">${list.map(opt).join('')}</div>` : '';
+    }).join('')}
+    <button class="btn ghost wide danger" data-act="shopDel" data-food="${from}">${kind === 'plan' ? 'Không mua (nhà còn)' : 'Bỏ, không mua thêm'}</button></div>`;
+  $('#sheet').classList.add('show');
+}
+
 // ---------- Tạo món ----------
 function openCustom() {
   picker = null;
@@ -503,8 +577,9 @@ function openCustom() {
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act], .tabbar button');
   if (!el) { if (e.target.id === 'sheet') closeSheet(); return; }
-  if (el.dataset.tab) { tab = el.dataset.tab; planOpen = null; render(); return; }
+  if (el.dataset.tab) { tab = el.dataset.tab; render(); return; }
   const a = el.dataset.act, slot = el.dataset.slot;
+  if (a === 'swipeToggle' && el.closest('.swipe').dataset.swiped) return;
   switch (a) {
     case 'day': curDay = addDays(curDay, +el.dataset.n); whatEatHtml = ''; render(); break;
     case 'dayToday': curDay = todayKey(); render(); break;
@@ -576,9 +651,40 @@ document.addEventListener('click', e => {
       }).catch(err => { el.disabled = false; el.textContent = '✨ Gợi ý các ngày còn lại'; $('#weekAi').insertAdjacentHTML('beforeend', `<p class="note">${esc(err.message)}</p>`); });
       break;
     case 'aiWeekAgain': weekAiHtml = ''; render(); break;
+    case 'swipeToggle': {
+      const li = el.closest('.swipe');
+      document.querySelectorAll('.swipe.open').forEach(x => { if (x !== li) x.classList.remove('open'); });
+      li.classList.toggle('open');
+      break;
+    }
+    case 'shopDel': {
+      const li = el.closest('.swipe');
+      const f = li ? li.dataset.food : foodPick.from, kind = li ? li.dataset.kind : foodPick.kind;
+      if (!li) closeSheet();
+      const sh = shopEdit(shopping().ws);
+      // Xoá ở danh sách theo thực đơn = không cần mua (nhà còn), vẫn ăn như thường.
+      if (kind === 'plan') { if (!sh.have.includes(f)) sh.have.push(f); }
+      else { delete sh.force[f]; if (!sh.skip.includes(f)) sh.skip.push(f); }
+      save(); render(); toast(kind === 'plan' ? `Không mua ${FOODS[f].name} (vẫn tính vào bữa ăn)` : `Đã bỏ ${FOODS[f].name}`);
+      break;
+    }
+    case 'shopSub': {
+      const li = el.closest('.swipe');
+      openFoodPicker(li.dataset.food, li.dataset.kind, +li.dataset.g);
+      break;
+    }
+    case 'pickFood': {
+      const { from, kind, g } = foodPick; const to = el.dataset.id;
+      const sh = shopEdit(shopping().ws);
+      if (kind === 'plan') sh.subs[from] = to;
+      else { delete sh.force[from]; if (!sh.skip.includes(from)) sh.skip.push(from); sh.force[to] = Math.min(Math.max(g, FOODS[to].unitG > 1 ? FOODS[to].unitG : 0), FOODS[to].max || g); }
+      closeSheet(); save(); render(); toast(`${FOODS[from].name} → ${FOODS[to].name}`);
+      break;
+    }
+    case 'shopReset': if (S.shop) delete S.shop[shopping().ws]; save(); render(); break;
     case 'delKey': if (confirm('Xoá Gemini API key khỏi máy?')) { S.settings.gkey = ''; save(); render(); } break;
     case 'shopMode': shopMode = el.dataset.v; render(); break;
-    case 'togglePlan': planOpen = planOpen === +el.dataset.wd ? null : +el.dataset.wd; render(); break;
+    case 'togglePlan': { const wd = +el.dataset.wd; planOpen.has(wd) ? planOpen.delete(wd) : planOpen.add(wd); render(); break; }
     case 'editPlan': {
       const wd = +el.dataset.wd;
       openPicker({ title: `${WD[wd]} — ${SLOTS.find(s => s.key === slot).name}`, selected: (S.plan[wd] || {})[slot] || [],
@@ -642,6 +748,38 @@ document.addEventListener('click', e => {
       if (confirm('Xoá toàn bộ nhật ký, sức khỏe, cài đặt? Không hoàn tác được.')) { S = freshState(); save(); render(); }
       break;
   }
+});
+
+let swipe = null;
+const SWIPE_W = 140;
+document.addEventListener('touchstart', e => {
+  const li = e.target.closest('.swipe');
+  if (!li) return;
+  const t = e.touches[0];
+  swipe = { li, x: t.clientX, y: t.clientY, base: li.classList.contains('open') ? -SWIPE_W : 0, dx: 0, lock: null };
+}, { passive: true });
+document.addEventListener('touchmove', e => {
+  if (!swipe) return;
+  const t = e.touches[0];
+  const dx = t.clientX - swipe.x, dy = t.clientY - swipe.y;
+  if (swipe.lock === null && Math.abs(dx) + Math.abs(dy) > 8) swipe.lock = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+  if (swipe.lock !== 'x') return;
+  swipe.dx = dx;
+  const main = swipe.li.querySelector('.swipe-main');
+  main.style.transition = 'none';
+  main.style.transform = `translateX(${Math.max(-SWIPE_W, Math.min(0, swipe.base + dx))}px)`;
+}, { passive: true });
+document.addEventListener('touchend', () => {
+  if (!swipe) return;
+  const { li, base, dx, lock } = swipe;
+  swipe = null;
+  if (lock !== 'x') return;
+  const main = li.querySelector('.swipe-main');
+  main.style.transition = ''; main.style.transform = '';
+  document.querySelectorAll('.swipe.open').forEach(x => { if (x !== li) x.classList.remove('open'); });
+  li.classList.toggle('open', base + dx < -SWIPE_W / 2);
+  // Chặn cú "click" sinh ra sau khi vuốt, để không bật/tắt lại.
+  li.dataset.swiped = '1'; setTimeout(() => delete li.dataset.swiped, 400);
 });
 
 document.addEventListener('input', e => { if (e.target.id === 'note') noteDraft = e.target.value; });
