@@ -101,9 +101,9 @@ function quickFixes(gaps) {
     const best = Object.entries(FOODS)
       .filter(([id, f]) => f.src !== 'sanco' && !S.settings.hidden.includes(id) && f.n[NI[g.k]] > 0 && f.n[NI.sug] === 0)
       .map(([id, f]) => {
-        // 1 phần ăn hợp lý: theo đơn vị mua nếu là quả/bìa/nắm, rau cả bó thì 200 g, còn lại 100 g.
+        // 1 phần ăn hợp lý: theo đơn vị (quả, bìa, nắm, thìa), rau cả bó thì 200 g, còn lại 100 g.
         const u = f.unitG || 0;
-        const g1 = u >= 30 && u < 300 ? u : u >= 300 ? 200 : 100;
+        const g1 = u > 1 && u < 300 ? u : u >= 300 ? 200 : 100;
         return { id, f, g: g1, gain: f.n[NI[g.k]] * g1 / 100 };
       })
       .sort((a, b) => b.gain - a.gain)[0];

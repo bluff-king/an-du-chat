@@ -96,7 +96,7 @@ const FOODS = {
                 n: [79, 2.9, 3.0, 2, 5, 0.3, 140, 12, 0.4, 110, 0.1, 40, 0, 0] },
   sua_kd:     { name: 'Sữa tươi không đường', src: 'mua', price: 3.5, unit: 'bịch 200 ml', unitG: 200, max: 1400,
                 n: [63, 3.1, 3.5, 2.2, 0, 0, 140, 11, 0.4, 115, 0.05, 45, 0, 0] },
-  vung:       { name: 'Vừng', src: 'que', price: 10,
+  vung:       { name: 'Vừng', src: 'que', price: 10, unit: 'thìa', unitG: 10,
                 n: [573, 17.7, 50, 7, 0, 11.8, 468, 351, 7.8, 975, 14.6, 0, 0, 0] },
   dau_an:     { name: 'Dầu ăn', src: 'sanco', price: 4.5,
                 n: [884, 0, 100, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
