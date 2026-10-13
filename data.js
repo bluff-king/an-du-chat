@@ -154,9 +154,9 @@ const DISHES = {
   gia_xao:        { name: 'Giá xào', kind: 'nha', ing: [['gia', 150], ['dau_an', 8]] },
 
   // Ăn ngoài (ước lượng 1 suất)
-  // Quán quen: mỳ + bò + rau cải + ~5 quả sung bé (~60 g).
+  // Quán quen: mỳ + bò + rau cải + nhiều sung tươi bé (nhỏ hơn quả nhãn, ~15 quả ≈ 100 g).
   mi_xao_bo:    { name: 'Mỳ xào bò rau cải, quả sung', kind: 'ngoai', price: 45,
-                  n: [694, 28.5, 25, 6, 5, 5.7, 840, 80, 5.0, 141, 4.2, 154, 31, 0] },
+                  n: [724, 28.8, 25.3, 6.1, 5, 6.9, 932, 87, 5.2, 155, 4.4, 157, 32, 0] },
   bun_ca_ro:    { name: 'Bún/bánh đa cá rô rán', kind: 'ngoai', price: 40,
                   n: [550, 28, 20, 4, 3, 2.5, 600, 60, 2.0, 250, 2.5, 50, 10, 150] },
   pho_bo:       { name: 'Phở bò', kind: 'ngoai', price: 45,
