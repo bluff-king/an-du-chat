@@ -96,6 +96,12 @@ const FOODS = {
                 n: [79, 2.9, 3.0, 2, 5, 0.3, 140, 12, 0.4, 110, 0.1, 40, 0, 0] },
   sua_kd:     { name: 'Sữa tươi không đường', src: 'mua', price: 3.5, unit: 'bịch 200 ml', unitG: 200, max: 1400,
                 n: [63, 3.1, 3.5, 2.2, 0, 0, 140, 11, 0.4, 115, 0.05, 45, 0, 0] },
+  nam_kim_cham: { name: 'Nấm kim châm', src: 'mua', price: 6, unit: 'gói', unitG: 150, max: 600,
+                n: [37, 2.7, 0.3, 0, 0, 2.7, 359, 16, 0.65, 0, 1.15, 0, 0, 0] },
+  nam_huong:  { name: 'Nấm hương tươi', src: 'mua', price: 15, unit: 'g', unitG: 1, max: 400,
+                n: [34, 2.2, 0.5, 0.1, 0, 2.5, 304, 20, 1.0, 2, 0.4, 0, 0, 0] },
+  moc_nhi:    { name: 'Mộc nhĩ (khô)', src: 'mua', price: 20, unit: 'g', unitG: 1,
+                n: [284, 9.3, 0.7, 0.1, 0, 70, 754, 83, 1.3, 159, 5.9, 0, 0, 0] },
   vung:       { name: 'Vừng', src: 'que', price: 10, unit: 'thìa', unitG: 10,
                 n: [573, 17.7, 50, 7, 0, 11.8, 468, 351, 7.8, 975, 14.6, 0, 0, 0] },
   dau_an:     { name: 'Dầu ăn', src: 'sanco', price: 4.5,
@@ -211,7 +217,7 @@ const TIPS = {
 
 // Nhóm để gợi ý đổi cùng loại ở trang Đi chợ (vuốt trái một dòng).
 const FOOD_GROUPS = {
-  'Rau, củ': ['rau_muong', 'bap_cai', 'cai_ngot', 'ca_chua', 'hanh_tay', 'ca_rot', 'su_hao', 'sup_lo', 'gia'],
+  'Rau, củ, nấm': ['rau_muong', 'bap_cai', 'cai_ngot', 'ca_chua', 'hanh_tay', 'ca_rot', 'su_hao', 'sup_lo', 'gia', 'nam_kim_cham', 'nam_huong'],
   'Quả': ['chuoi', 'oi', 'cam'],
   'Đạm': ['trung', 'dauphu', 'ga_dui', 'ga_uc', 'gio', 'thit_bam', 'xuc_xich', 'bo'],
   'Khác': ['lac', 'sua_socola', 'sua_kd', 'banhgao', 'bun'],

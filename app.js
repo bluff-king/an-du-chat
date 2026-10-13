@@ -32,6 +32,7 @@ function load() {
 }
 
 let S = load();
+Object.assign(FOODS, S.foods || {});
 
 // Giao diện: chế độ sáng/tối và màu chủ đạo, áp lên <html> trước khi vẽ.
 const ACCENT_SWATCH = { blue: '#7FB2E5', green: '#6FC28F', pink: '#E68AAE', purple: '#9C85DB', orange: '#E9A15F' };
@@ -435,11 +436,13 @@ function viewPlan() {
   }).join('');
   const customs = Object.entries(S.custom).map(([id, d]) => `<li>${esc(d.name)} <small class="muted">${KIND_NAMES[d.kind]}</small>
       <button class="x" data-act="delCustom" data-id="${id}" aria-label="Xoá">×</button></li>`).join('');
+  const myFoods = Object.entries(S.foods || {}).map(([id, f]) => `<li>${esc(f.name)} <small class="muted">nguyên liệu${f.src === 'que' ? ' · quê' : ''}</small>
+      <button class="x" data-act="delFood" data-id="${id}" aria-label="Xoá">×</button></li>`).join('');
   return `
     <header class="head plain"><div><h1>Thực đơn tuần</h1><p class="sub">Bấm vào một bữa để sửa thực đơn mẫu (áp cho mọi tuần). Dòng ↳ là những gì tuần này bạn đã ghi khác đi.</p></div></header>
     ${days}
     <section class="card"><div class="row"><h3>Món của tôi</h3><button class="btn sm" data-act="newCustom">+ Tạo món</button></div>
-      ${customs ? `<ul class="extras">${customs}</ul>` : '<p class="muted">Tự tạo món từ nguyên liệu (ví dụ món quê mới).</p>'}</section>
+      ${customs || myFoods ? `<ul class="extras">${customs}${myFoods}</ul>` : '<p class="muted">Tự tạo món từ nguyên liệu (ví dụ món quê mới, món có thêm nấm, mộc nhĩ). Thiếu nguyên liệu thì bấm “+ Nguyên liệu mới” trong lúc tạo món.</p>'}</section>
     <button class="btn ghost wide" data-act="resetPlan">Khôi phục thực đơn mẫu</button>`;
 }
 
@@ -557,19 +560,28 @@ function openFoodPicker(from, kind, g) {
 }
 
 // ---------- Tạo món ----------
+// 1 phần vừa khi để trống ô gam: 1 quả/bìa/củ…, rau cả bó thì 150 g, còn lại 100 g.
+const defaultG = f => { const u = FOODS[f].unitG || 0; return u > 1 && u < 300 ? u : u >= 300 ? 150 : 100; };
+const foodOpts = () => '<option value="">— chọn nguyên liệu —</option>' +
+  Object.entries(FOODS).sort((a, b) => a[1].name.localeCompare(b[1].name, 'vi'))
+    .map(([id, f]) => `<option value="${id}">${esc(f.name)}${f.src === 'que' ? ' (quê)' : ''}</option>`).join('');
+const ingRow = () => `<div class="ing"><select>${foodOpts()}</select><input type="number" inputmode="numeric" placeholder="gam (trống = 1 phần)"></div>`;
+
 function openCustom() {
   picker = null;
-  const opts = Object.entries(FOODS).map(([id, f]) => `<option value="${id}">${esc(f.name)}</option>`).join('');
-  const ingRow = () => `<div class="ing"><select>${opts}</select><input type="number" inputmode="numeric" placeholder="gam"></div>`;
   $('#sheet').innerHTML = `<div class="sheet-body">
     <div class="row"><h3>Tạo món</h3><button class="x" data-act="pickClose" aria-label="Đóng">×</button></div>
-    <label>Tên món<input type="text" id="c_name" placeholder="VD: Cá thu kho"></label>
+    <label>Tên món<input type="text" id="c_name" placeholder="VD: Súp gà nấm"></label>
     <label>Loại<select id="c_kind">${['nha', 'sang', 'vat'].map(k => `<option value="${k}">${KIND_NAMES[k]}</option>`).join('')}</select></label>
-    <p class="muted">Nguyên liệu cho 1 suất:</p>
-    <div id="c_ings">${ingRow()}${ingRow()}</div>
-    <button class="btn sm" data-act="addIng">+ Nguyên liệu</button>
+    <p class="muted">Nguyên liệu cho 1 suất. Để trống gam = 1 phần vừa (1 quả trứng, 1 củ cà rốt, 100 g thịt…).</p>
+    <div id="c_ings">${ingRow()}${ingRow()}${ingRow()}</div>
+    <div class="actions"><button class="btn sm" data-act="addIng">+ Dòng</button>
+      <button class="btn sm" data-act="newFood">+ Nguyên liệu mới</button></div>
+    <div id="newFood"></div>
+    <p class="muted">Thêm luôn vào thực đơn (không bắt buộc):</p>
+    <div class="form"><label>Ngày<select id="c_wd"><option value="">—</option>${ORDER.map(wd => `<option value="${wd}">${WD[wd]}</option>`).join('')}</select></label>
+      <label>Bữa<select id="c_slot">${SLOTS.map(x => `<option value="${x.key}">${x.name}</option>`).join('')}</select></label></div>
     <button class="btn primary wide" data-act="saveCustom">Lưu món</button></div>`;
-  $('#sheet').dataset.ingrow = ingRow();
   $('#sheet').classList.add('show');
 }
 
@@ -696,13 +708,51 @@ document.addEventListener('click', e => {
       if (confirm('Khôi phục thực đơn mẫu? Thực đơn bạn đã sửa sẽ mất.')) { S.plan = JSON.parse(JSON.stringify(DEFAULT_PLAN)); save(); render(); }
       break;
     case 'newCustom': openCustom(); break;
-    case 'addIng': $('#c_ings').insertAdjacentHTML('beforeend', $('#sheet').dataset.ingrow); break;
+    case 'addIng': $('#c_ings').insertAdjacentHTML('beforeend', ingRow()); break;
     case 'saveCustom': {
       const name = $('#c_name').value.trim();
-      const ing = [...document.querySelectorAll('#c_ings .ing')].map(r => [r.querySelector('select').value, +r.querySelector('input').value]).filter(([, g]) => g > 0);
-      if (!name || !ing.length) { toast('Cần tên món và ít nhất 1 nguyên liệu'); break; }
-      S.custom['c_' + Date.now().toString(36)] = { name, kind: $('#c_kind').value, ing };
-      save(); closeSheet(); render(); toast('Đã tạo món');
+      const ing = [...document.querySelectorAll('#c_ings .ing')]
+        .map(r => [r.querySelector('select').value, +r.querySelector('input').value])
+        .filter(([f]) => f && FOODS[f]).map(([f, g]) => [f, g > 0 ? g : defaultG(f)]);
+      if (!name) { toast('Chưa có tên món'); $('#c_name').focus(); break; }
+      if (!ing.length) { toast('Chọn ít nhất 1 nguyên liệu'); break; }
+      const id = 'c_' + Date.now().toString(36);
+      S.custom[id] = { name, kind: $('#c_kind').value, ing };
+      const wd = $('#c_wd').value, sl = $('#c_slot').value;
+      if (wd !== '') { const w = +wd; S.plan[w] = { ...(S.plan[w] || {}), [sl]: [...((S.plan[w] || {})[sl] || []), id] }; }
+      save(); closeSheet(); render(); toast(wd !== '' ? `Đã tạo món và thêm vào ${WD[+wd]}` : 'Đã tạo món — chọn nó ở mục Món nhà khi sửa thực đơn');
+      break;
+    }
+    case 'newFood':
+      $('#newFood').innerHTML = `<div class="card inset">
+        <label>Tên nguyên liệu<input type="text" id="nf_name" placeholder="VD: chả cá Hạ Long, nấm đùi gà"></label>
+        <label>Nguồn<select id="nf_src"><option value="mua">Mua</option><option value="que">Đồ quê mang lên</option></select></label>
+        <button class="btn primary wide" data-act="nfSave">✨ Gemini ước lượng & thêm</button><div id="nf_msg"></div></div>`;
+      $('#nf_name').focus();
+      break;
+    case 'nfSave': {
+      const name = $('#nf_name').value.trim();
+      if (!name) { toast('Gõ tên nguyên liệu'); break; }
+      el.disabled = true;
+      estimateFood(name, msg => { el.textContent = msg; }).then(f => {
+        const id = 'f_' + Date.now().toString(36);
+        const food = { ...f, name, src: $('#nf_src').value };
+        S.foods = { ...(S.foods || {}), [id]: food };
+        FOODS[id] = food; save();
+        // Gắn vào ô trống đầu tiên (hoặc dòng mới), giữ nguyên những gì đã nhập.
+        document.querySelectorAll('#c_ings select').forEach(sel => sel.insertAdjacentHTML('beforeend', `<option value="${id}">${esc(name)}</option>`));
+        let sel = [...document.querySelectorAll('#c_ings select')].find(x => !x.value);
+        if (!sel) { $('#c_ings').insertAdjacentHTML('beforeend', ingRow()); sel = [...document.querySelectorAll('#c_ings select')].pop(); }
+        sel.value = id;
+        $('#newFood').innerHTML = `<p class="ok-msg">Đã thêm “${esc(name)}” (${f.note ? esc(f.note) : 'ước lượng'}).</p>`;
+      }).catch(err => { el.disabled = false; el.textContent = '✨ Gemini ước lượng & thêm'; $('#nf_msg').innerHTML = `<p class="note">${esc(err.message)}</p>`; });
+      break;
+    }
+    case 'delFood': {
+      const id = el.dataset.id;
+      const used = Object.values(S.custom).some(d => d.ing.some(([f]) => f === id));
+      if (used) { toast('Nguyên liệu đang dùng trong món của bạn — xoá món trước'); break; }
+      if (confirm('Xoá nguyên liệu này?')) { delete S.foods[id]; delete FOODS[id]; save(); render(); }
       break;
     }
     case 'delCustom': if (confirm('Xoá món này?')) { delete S.custom[el.dataset.id]; save(); render(); } break;
@@ -792,7 +842,7 @@ document.addEventListener('change', e => {
       const s = JSON.parse(r.result);
       if (!s.plan || !s.logs) throw new Error();
       if (!confirm('Nhập bản sao lưu sẽ thay thế dữ liệu hiện tại. Tiếp tục?')) return;
-      const key = S.settings.gkey; localStorage.setItem(KEY, JSON.stringify(s)); S = load(); S.settings.gkey = key; save(); applyTheme(); render(); toast('Đã nhập bản sao lưu');
+      const key = S.settings.gkey; localStorage.setItem(KEY, JSON.stringify(s)); S = load(); S.settings.gkey = key; Object.assign(FOODS, S.foods || {}); save(); applyTheme(); render(); toast('Đã nhập bản sao lưu');
     } catch { toast('File không hợp lệ'); }
   };
   r.readAsText(e.target.files[0]);

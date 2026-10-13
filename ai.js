@@ -222,3 +222,25 @@ function normDate(d, ws) {
   if (m && +m[1] >= 2 && +m[1] <= 7) return addDays(ws, +m[1] - 2);
   return curDay;
 }
+
+// Nguyên liệu chưa có trong bảng: Gemini ước lượng dinh dưỡng /100 g và giá ở Hà Nội.
+async function estimateFood(name, onStatus) {
+  const system = `Bạn là chuyên gia dinh dưỡng Việt Nam. Ước lượng thành phần dinh dưỡng TRÊN 100 g phần ăn được (dạng thường dùng khi nấu; đồ khô thì tính dạng khô)
+theo Bảng thành phần thực phẩm Việt Nam / USDA. Ước lượng giá bán lẻ ở Hà Nội năm 2026 (nghìn đồng / 100 g).
+Khóa n: kcal, pro, fat, sat (g), sug (g đường THÊM), fib (g), k, mg, zn, ca, fe (mg), vita (µg RAE), vitc (mg), o3 (mg DHA+EPA).
+Trả JSON: {"n":{...đủ 14 khóa},"price":0,"unit":"gói/quả/bó/g","unitG":0,"note":"1 câu ngắn nếu không chắc"}. unitG = số gam của 1 đơn vị mua (dùng 1 nếu bán theo cân).`;
+  const { text } = await gemini(system, name, true, onStatus);
+  let d;
+  try { d = JSON.parse(text); } catch (e) { throw new Error('Gemini trả JSON hỏng, thử lại.'); }
+  if (Array.isArray(d)) d = d[0] || {};
+  if (!d.n) throw new Error('Không ước lượng được — thử tên cụ thể hơn.');
+  // Bán theo cân ("g", "kg") thì tính theo gam, tránh hiện "2 g" khi unitG = 100.
+  const byWeight = /^(k?g|gam|gram|kg)$/i.test(String(d.unit || '').trim());
+  const unitG = byWeight ? 1 : Math.max(1, Math.round(+d.unitG || 1));
+  return {
+    n: NUTRIENTS.map(k => Math.max(0, +d.n[k.key] || 0)),
+    price: Math.max(0, +d.price || 0),
+    unit: unitG > 1 ? String(d.unit || 'phần') : 'g', unitG,
+    note: d.note || '',
+  };
+}

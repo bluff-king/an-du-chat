@@ -173,3 +173,4 @@ summary { cursor: pointer; padding: 8px 0; font-weight: 600; }
 .pslot .actual { display: block; color: var(--blue-ink); font-size: 14px; margin-top: 4px; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 4px; background: var(--blue-ink); vertical-align: middle; }
 h3 small { font-family: var(--sans); font-weight: 400; }
+.card.inset { background: var(--bg); margin-top: 10px; }
