@@ -1,0 +1,14 @@
+{
+  "name": "Ăn Đủ Chất",
+  "short_name": "Ăn Đủ Chất",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F6F9FB",
+  "theme_color": "#F6F9FB",
+  "lang": "vi",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
