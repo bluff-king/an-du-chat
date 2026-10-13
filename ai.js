@@ -74,15 +74,15 @@ Khóa dinh dưỡng: kcal, pro (g đạm), fat (g), sat (g mỡ bão hòa), sug 
 Món rán/chiên: cộng dầu ăn hút vào. "Cơm" không nói lượng = 2 bát (~300 g cơm chín). Quả sung: tính theo sung ta/sung muối tùy ngữ cảnh.
 Tuần này: ${days}. Hôm nay là ${curDay}. Nếu không nói ngày thì là ${curDay}.
 bua: sang | trua | toi | vat (ăn vặt/đồ uống). Không nói bữa thì đoán theo món; một ngày có 2 món chính khác nhau (vd mỳ và cơm) mà không nói bữa thì chia cho trưa và tối.
-BỮA SÁNG cố định theo thực đơn (bánh gạo, chuối, sữa) — app tự tính, KHÔNG tạo item bua=sang cho các món đó và không đoán bữa sáng. Chỉ tạo item bua=sang khi người dùng nói rõ sáng ăn món KHÁC (vd bánh dày giò, phở).
+BỮA SÁNG: chỉ tạo item bua=sang khi người dùng CÓ NHẮC tới bữa sáng (khi đó ghi đúng những gì họ nói, không thêm món); không nhắc thì không tạo, không đoán. Bánh gạo One One/Ichi: 1 cái ≈ 10 g (3–4 cái ≈ 40 g).
 Trả về JSON: {"items":[{"ngay":"YYYY-MM-DD","bua":"trua","ten":"Gà rán (150 g)","n":{"kcal":0,"pro":0,...đủ 14 khóa}}],"ghi_chu":"1 câu nếu có gì không chắc"}`;
   const { text: out, model } = await gemini(system, text, true, onStatus);
   let data;
   try { data = JSON.parse(out); } catch (e) { throw new Error('Gemini trả JSON hỏng, thử lại.'); }
   if (Array.isArray(data)) data = { items: data };   // model lite đôi khi trả mảng trần
-  // Bữa sáng cố định: bỏ qua nếu Gemini vẫn trả về món sáng quen thuộc.
-  const items = (data.items || []).filter(x => x && x.ten && x.n
-    && !(x.bua === 'sang' && /bánh gạo|chuối|sữa/i.test(x.ten)));
+  // Người dùng không nhắc bữa sáng mà Gemini vẫn tự thêm thì bỏ — bữa sáng giữ theo thực đơn.
+  const saidBreakfast = /s[aá]ng|bữa đầu|điểm tâm/i.test(text);
+  const items = (data.items || []).filter(x => x && x.ten && x.n && (saidBreakfast || normSlot(x.bua) !== 'sang'));
   if (!items.length) throw new Error('Không tách được món nào — viết rõ hơn chút?');
   const touched = new Set(), where = [];
   for (const x of items) {
