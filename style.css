@@ -13,15 +13,34 @@
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
 }
+:root[data-accent="green"] { --blue: #D8F0DF; --blue-ink: #2E7D4F; }
+:root[data-accent="pink"] { --blue: #F9DCE6; --blue-ink: #B03A6A; }
+:root[data-accent="purple"] { --blue: #E6DEF7; --blue-ink: #6A4BB0; }
+:root[data-accent="orange"] { --blue: #FCE3CC; --blue-ink: #B25E12; }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #12171C; --card: #1B2229; --ink: #E6EDF2; --muted: #93A1AD; --line: #2A333C;
     --blue: #22364A; --blue-ink: #8DBDEB;
     --green: #1F3A2A; --green-ink: #85D3A4;
     --red: #45272A; --red-ink: #F0A79D;
     --yellow: #3E3420; --yellow-ink: #E8C56E;
   }
+  :root:not([data-theme="light"])[data-accent="green"] { --blue: #1F3A2A; --blue-ink: #85D3A4; }
+  :root:not([data-theme="light"])[data-accent="pink"] { --blue: #47263A; --blue-ink: #F2A6C6; }
+  :root:not([data-theme="light"])[data-accent="purple"] { --blue: #2E2648; --blue-ink: #C3B0F0; }
+  :root:not([data-theme="light"])[data-accent="orange"] { --blue: #45311F; --blue-ink: #F2B77E; }
 }
+:root[data-theme="dark"] {
+    --bg: #12171C; --card: #1B2229; --ink: #E6EDF2; --muted: #93A1AD; --line: #2A333C;
+    --blue: #22364A; --blue-ink: #8DBDEB;
+    --green: #1F3A2A; --green-ink: #85D3A4;
+    --red: #45272A; --red-ink: #F0A79D;
+    --yellow: #3E3420; --yellow-ink: #E8C56E;
+}
+:root[data-theme="dark"][data-accent="green"] { --blue: #1F3A2A; --blue-ink: #85D3A4; }
+:root[data-theme="dark"][data-accent="pink"] { --blue: #47263A; --blue-ink: #F2A6C6; }
+:root[data-theme="dark"][data-accent="purple"] { --blue: #2E2648; --blue-ink: #C3B0F0; }
+:root[data-theme="dark"][data-accent="orange"] { --blue: #45311F; --blue-ink: #F2B77E; }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 var(--sans); }
 body { min-height: 100vh; }
@@ -139,3 +158,6 @@ summary { cursor: pointer; padding: 8px 0; font-weight: 600; }
 .ok-msg { color: var(--green-ink); font-weight: 600; margin: 8px 0; }
 .note-card textarea { margin: 8px 0; }
 #aiAns p { margin: 6px 0; }
+.swatches { display: flex; gap: 10px; margin: 6px 0 12px; }
+.swatch { width: 40px; height: 40px; border-radius: 20px; border: 2px solid var(--line); cursor: pointer; }
+.swatch.on { border-color: var(--ink); box-shadow: 0 0 0 3px var(--card) inset; }

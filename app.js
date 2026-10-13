@@ -13,7 +13,8 @@ function freshState() {
     health: [],
     custom: {},
     settings: { budget: 450, hidden: [], targets: { ...DEFAULT_TARGETS }, assume: true, recheck: '', exam: '',
-                gkey: '', gmodel: 'gemini-3.5-flash', prefs: '', sendExam: false },
+                gkey: '', gmodel: 'gemini-3.5-flash', prefs: '', sendExam: false,
+                theme: 'auto', accent: 'blue' },
   };
 }
 
@@ -31,6 +32,17 @@ function load() {
 }
 
 let S = load();
+
+// Giao diện: chế độ sáng/tối và màu chủ đạo, áp lên <html> trước khi vẽ.
+const ACCENT_SWATCH = { blue: '#7FB2E5', green: '#6FC28F', pink: '#E68AAE', purple: '#9C85DB', orange: '#E9A15F' };
+function applyTheme() {
+  const r = document.documentElement;
+  if (S.settings.theme === 'auto') r.removeAttribute('data-theme'); else r.dataset.theme = S.settings.theme;
+  if (S.settings.accent === 'blue') r.removeAttribute('data-accent'); else r.dataset.accent = S.settings.accent;
+  const meta = document.querySelector('meta[name=theme-color]');
+  if (meta) meta.content = getComputedStyle(r).getPropertyValue('--bg').trim() || '#F6F9FB';
+}
+applyTheme();
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(S)); }
   catch (e) { toast('Không lưu được — bộ nhớ trình duyệt bị chặn?'); }
@@ -388,6 +400,13 @@ function viewHealth() {
       <label class="full">Hẹn khám lại<input type="date" id="s_recheck" value="${st.recheck || ''}"></label>
       ${st.recheck ? `<p class="note">Còn ${Math.max(0, Math.round((parse(st.recheck) - parse(todayKey())) / 864e5))} ngày.</p>` : ''}
       <p class="muted">App chỉ hỗ trợ ăn uống, không thay lời khuyên của bác sĩ.</p></section>
+    <section class="card"><h3>Giao diện</h3>
+      <div class="seg">${[['auto', 'Tự động'], ['light', 'Sáng'], ['dark', 'Tối']].map(([v, n]) =>
+        `<button class="${st.theme === v ? 'on' : ''}" data-act="theme" data-v="${v}">${n}</button>`).join('')}</div>
+      <p class="muted">Màu chủ đạo</p>
+      <div class="swatches">${Object.entries(ACCENT_SWATCH).map(([k, col]) =>
+        `<button class="swatch ${st.accent === k ? 'on' : ''}" style="background:${col}" data-act="accent" data-v="${k}" aria-label="Màu ${k}"></button>`).join('')}</div>
+    </section>
     <section class="card"><h3>Cài đặt</h3>
       <label>Ngân sách đi chợ (nghìn đồng/tuần)<input type="number" inputmode="numeric" id="s_budget" value="${st.budget}"></label>
       <details ${st.gkey ? '' : 'open'}><summary>Gemini (AI) ${st.gkey ? '✓ đã có key' : '— chưa có key'}</summary>
@@ -527,6 +546,8 @@ document.addEventListener('click', e => {
       askWhatToEat().then(r => { el.remove(); $('#aiAns').innerHTML = mdLite(r.text) + `<p class="muted">— ${esc(r.model)}</p>`; whatEatHtml = $('#whatEat').innerHTML; })
         .catch(err => { el.disabled = false; el.textContent = '✨ Hỏi Gemini gợi ý món cụ thể'; $('#aiAns').innerHTML = `<p class="note">${esc(err.message)}</p>`; });
       break;
+    case 'theme': S.settings.theme = el.dataset.v; save(); applyTheme(); render(); break;
+    case 'accent': S.settings.accent = el.dataset.v; save(); applyTheme(); render(); break;
     case 'delKey': if (confirm('Xoá Gemini API key khỏi máy?')) { S.settings.gkey = ''; save(); render(); } break;
     case 'shopMode': shopMode = el.dataset.v; render(); break;
     case 'togglePlan': planOpen = planOpen === +el.dataset.wd ? null : +el.dataset.wd; render(); break;
@@ -604,7 +625,7 @@ document.addEventListener('change', e => {
       const s = JSON.parse(r.result);
       if (!s.plan || !s.logs) throw new Error();
       if (!confirm('Nhập bản sao lưu sẽ thay thế dữ liệu hiện tại. Tiếp tục?')) return;
-      const key = S.settings.gkey; localStorage.setItem(KEY, JSON.stringify(s)); S = load(); S.settings.gkey = key; save(); render(); toast('Đã nhập bản sao lưu');
+      const key = S.settings.gkey; localStorage.setItem(KEY, JSON.stringify(s)); S = load(); S.settings.gkey = key; save(); applyTheme(); render(); toast('Đã nhập bản sao lưu');
     } catch { toast('File không hợp lệ'); }
   };
   r.readAsText(e.target.files[0]);
