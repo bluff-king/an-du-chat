@@ -12,7 +12,8 @@ function freshState() {
     logs: {},
     health: [],
     custom: {},
-    settings: { budget: 450, hidden: [], targets: { ...DEFAULT_TARGETS }, assume: true, recheck: '', exam: '' },
+    settings: { budget: 450, hidden: [], targets: { ...DEFAULT_TARGETS }, assume: true, recheck: '', exam: '',
+                gkey: '', gmodel: 'gemini-3.5-flash', prefs: '', sendExam: false },
   };
 }
 
@@ -69,17 +70,18 @@ function meal(date, slot) {
   const log = S.logs[date] && S.logs[date][slot];
   const planned = planFor(date)[slot] || [];
   if (log) {
-    return { st: log.st, por: log.por || 1,
+    return { st: log.st, por: log.por || 1, items: log.st === 'skip' ? [] : (log.items || []),
              dishes: log.st === 'skip' ? [] : (log.dishes || planned) };
   }
   const past = date < todayKey();
-  return { st: past && S.settings.assume ? 'assumed' : 'plan', por: 1, dishes: planned };
+  return { st: past && S.settings.assume ? 'assumed' : 'plan', por: 1, dishes: planned, items: [] };
 }
 const extras = date => (S.logs[date] && S.logs[date].extra) || [];
 
 function mealNut(m) {
   const acc = zero();
   for (const id of m.dishes) addInto(acc, dishNut(id), m.por);
+  for (const x of m.items || []) addInto(acc, x.n, m.por);
   return acc;
 }
 
@@ -125,6 +127,8 @@ let curDay = todayKey();
 let curWeek = weekStart(todayKey());
 let shopMode = 'this';
 let planOpen = null;
+let noteDraft = '';
+let whatEatHtml = '';
 
 function render() {
   document.querySelectorAll('.tabbar button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
@@ -167,7 +171,18 @@ function viewToday() {
       <div><h1>${isToday ? 'Hôm nay' : fmtDay(curDay)}</h1><p class="sub">${isToday ? fmtDay(curDay) : '<a data-act="dayToday">về hôm nay</a>'}</p></div>
       <button class="nav" data-act="day" data-n="1" aria-label="Hôm sau">›</button>
     </header>
+    <section class="card note-card">
+      <h3>Ghi nhanh</h3>
+      <p class="muted">Gõ tự do, một ngày hay cả tuần đều được. VD: “thứ 2 trưa mỳ xào bò, rau cải, quả sung; tối cơm gà tự rán”.</p>
+      <textarea id="note" rows="3" placeholder="Hôm nay ăn gì…">${esc(noteDraft)}</textarea>
+      <div class="actions"><button class="btn primary" data-act="aiParse">✨ Phân tích & ghi vào</button></div>
+      <div id="noteMsg"></div>
+    </section>
     ${cards}
+    <section class="card">
+      <div class="row"><h3>Còn phải ăn gì?</h3><button class="btn sm primary" data-act="whatEat">Xem</button></div>
+      <div id="whatEat">${whatEatHtml}</div>
+    </section>
     <section class="card">
       <div class="row"><h3>Ăn thêm ngoài thực đơn</h3><button class="btn sm" data-act="addExtra">+ Thêm</button></div>
       ${ex ? `<ul class="extras">${ex}</ul>` : '<p class="muted">Trà sữa, nước ngọt, hoa quả, sữa thêm… bấm “+ Thêm”.</p>'}
@@ -184,8 +199,8 @@ function slotCard(key, name) {
   const label = { ok: '✓ Đã ăn', swap: '🔄 Đã đổi món', skip: '✕ Bỏ bữa',
                   assumed: 'Chưa xác nhận — tạm tính theo thực đơn', plan: 'Theo thực đơn' }[m.st];
   const confirmed = ['ok', 'swap', 'skip'].includes(m.st);
-  const list = m.dishes.length ? m.dishes.map(id => `<li>${esc(dishName(id))}</li>`).join('')
-                               : '<li class="muted">Không ăn</li>';
+  const names = [...m.dishes.map(id => esc(dishName(id))), ...(m.items || []).map(x => '✨ ' + esc(x.name))];
+  const list = names.length ? names.map(n => `<li>${n}</li>`).join('') : '<li class="muted">Không ăn</li>';
   const por = m.st !== 'skip' ? `<div class="chips">${PORTIONS.map(([v, n]) =>
       `<button class="chip ${confirmed && m.por === v ? 'on' : ''}" data-act="por" data-slot="${key}" data-v="${v}">${n}</button>`).join('')}</div>` : '';
   return `<section class="card slot st-${m.st}">
@@ -201,6 +216,7 @@ function slotCard(key, name) {
 }
 
 function setLog(slot, val) {
+  whatEatHtml = '';
   S.logs[curDay] = S.logs[curDay] || {};
   if (val === null) delete S.logs[curDay][slot]; else S.logs[curDay][slot] = val;
   save(); render();
@@ -374,6 +390,14 @@ function viewHealth() {
       <p class="muted">App chỉ hỗ trợ ăn uống, không thay lời khuyên của bác sĩ.</p></section>
     <section class="card"><h3>Cài đặt</h3>
       <label>Ngân sách đi chợ (nghìn đồng/tuần)<input type="number" inputmode="numeric" id="s_budget" value="${st.budget}"></label>
+      <details ${st.gkey ? '' : 'open'}><summary>Gemini (AI) ${st.gkey ? '✓ đã có key' : '— chưa có key'}</summary>
+        <label>API key<input type="password" id="s_gkey" autocomplete="off" placeholder="${st.gkey ? '•••••••• (để trống = giữ key cũ)' : 'dán key từ aistudio.google.com'}"></label>
+        <label>Model<select id="s_gmodel">${GEMINI_FALLBACKS.map(m => `<option ${m === st.gmodel ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
+        <label class="full">Sở thích, điều kiện (gửi kèm cho AI)<textarea id="s_prefs" rows="3" placeholder="VD: ghét rau nhớt; có bếp; mang cơm trưa…">${esc(st.prefs || '')}</textarea></label>
+        <label class="check"><input type="checkbox" id="s_sendExam" ${st.sendExam ? 'checked' : ''}> Gửi kèm ghi chú khám cho AI</label>
+        <p class="muted">Key chỉ lưu trên máy này, không có trong file sao lưu. Gói free của Google có thể dùng nội dung gửi lên để cải thiện sản phẩm.</p>
+        ${st.gkey ? '<button class="btn ghost danger sm" data-act="delKey">Xoá key</button>' : ''}
+      </details>
       <label class="check"><input type="checkbox" id="s_assume" ${st.assume ? 'checked' : ''}> Bữa đã qua mà chưa điền thì coi như ăn đúng thực đơn</label>
       <details><summary>Thực phẩm không muốn được gợi ý</summary><div class="hidden-list">
         ${Object.entries(FOODS).filter(([, f]) => f.src === 'mua').map(([id, f]) =>
@@ -446,7 +470,7 @@ document.addEventListener('click', e => {
   if (el.dataset.tab) { tab = el.dataset.tab; planOpen = null; render(); return; }
   const a = el.dataset.act, slot = el.dataset.slot;
   switch (a) {
-    case 'day': curDay = addDays(curDay, +el.dataset.n); render(); break;
+    case 'day': curDay = addDays(curDay, +el.dataset.n); whatEatHtml = ''; render(); break;
     case 'dayToday': curDay = todayKey(); render(); break;
     case 'week': curWeek = addDays(curWeek, 7 * el.dataset.n); render(); break;
     case 'weekNow': curWeek = weekStart(todayKey()); render(); break;
@@ -475,6 +499,35 @@ document.addEventListener('click', e => {
       } });
       break;
     case 'rmExtra': S.logs[curDay].extra.splice(+el.dataset.i, 1); save(); render(); break;
+    case 'aiParse': {
+      const text = $('#note').value.trim();
+      noteDraft = text;
+      if (!text) { toast('Gõ gì đó vào ô Ghi nhanh trước'); break; }
+      el.disabled = true; el.textContent = 'Đang phân tích…';
+      parseNote(text).then(r => {
+        noteDraft = ''; whatEatHtml = ''; render();
+        $('#noteMsg').innerHTML = `<p class="ok-msg">Đã ghi ${r.count} món vào ${r.meals} bữa (✨). Sai thì bấm “Hoàn tác” ở bữa đó.</p>${r.note ? `<p class="muted">${esc(r.note)}</p>` : ''}`;
+      }).catch(err => { el.disabled = false; el.textContent = '✨ Phân tích & ghi vào'; $('#noteMsg').innerHTML = `<p class="note">${esc(err.message)}</p>`; });
+      break;
+    }
+    case 'whatEat': {
+      const gaps = remainingToday();
+      const fixes = quickFixes(gaps);
+      whatEatHtml = gaps.length
+        ? `<p class="muted">Tính cả các bữa còn lại theo thực đơn hôm nay:</p><ul class="tips">${fixes.map(x => {
+            const n = NUTRIENTS[NI[x.k]];
+            return `<li><b>${n.name}</b> còn thiếu ${fmtNum(x.need, n.unit)} ${n.unit} → ${esc(x.food)} ${x.grams} g (+${fmtNum(x.gain, n.unit)})</li>`; }).join('')}</ul>`
+        : '<p class="ok-msg">Hôm nay đã đủ các chất chính 👍</p>';
+      if (S.settings.gkey) whatEatHtml += '<button class="btn wide" data-act="askAI">✨ Hỏi Gemini gợi ý món cụ thể</button><div id="aiAns"></div>';
+      $('#whatEat').innerHTML = whatEatHtml;
+      break;
+    }
+    case 'askAI':
+      el.disabled = true; el.textContent = 'Gemini đang nghĩ…';
+      askWhatToEat().then(r => { el.remove(); $('#aiAns').innerHTML = mdLite(r.text) + `<p class="muted">— ${esc(r.model)}</p>`; whatEatHtml = $('#whatEat').innerHTML; })
+        .catch(err => { el.disabled = false; el.textContent = '✨ Hỏi Gemini gợi ý món cụ thể'; $('#aiAns').innerHTML = `<p class="note">${esc(err.message)}</p>`; });
+      break;
+    case 'delKey': if (confirm('Xoá Gemini API key khỏi máy?')) { S.settings.gkey = ''; save(); render(); } break;
     case 'shopMode': shopMode = el.dataset.v; render(); break;
     case 'togglePlan': planOpen = planOpen === +el.dataset.wd ? null : +el.dataset.wd; render(); break;
     case 'editPlan': {
@@ -517,13 +570,17 @@ document.addEventListener('click', e => {
       st.assume = $('#s_assume').checked;
       st.recheck = $('#s_recheck').value;
       st.exam = $('#s_exam').value;
+      if ($('#s_gkey').value.trim()) st.gkey = $('#s_gkey').value.trim();
+      st.gmodel = $('#s_gmodel').value;
+      st.prefs = $('#s_prefs').value;
+      st.sendExam = $('#s_sendExam').checked;
       st.hidden = [...document.querySelectorAll('[data-hide]')].filter(c => c.checked).map(c => c.dataset.hide);
       document.querySelectorAll('[data-target]').forEach(i => { if (+i.value > 0) st.targets[i.dataset.target] = +i.value; });
       save(); render(); toast('Đã lưu cài đặt');
       break;
     }
     case 'export': {
-      const blob = new Blob([JSON.stringify(S, null, 1)], { type: 'application/json' });
+      const blob = new Blob([JSON.stringify({ ...S, settings: { ...S.settings, gkey: '' } }, null, 1)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url; link.download = `an-du-chat-${todayKey()}.json`;
@@ -537,6 +594,8 @@ document.addEventListener('click', e => {
   }
 });
 
+document.addEventListener('input', e => { if (e.target.id === 'note') noteDraft = e.target.value; });
+
 document.addEventListener('change', e => {
   if (e.target.id !== 'importFile' || !e.target.files[0]) return;
   const r = new FileReader();
@@ -545,7 +604,7 @@ document.addEventListener('change', e => {
       const s = JSON.parse(r.result);
       if (!s.plan || !s.logs) throw new Error();
       if (!confirm('Nhập bản sao lưu sẽ thay thế dữ liệu hiện tại. Tiếp tục?')) return;
-      localStorage.setItem(KEY, JSON.stringify(s)); S = load(); render(); toast('Đã nhập bản sao lưu');
+      const key = S.settings.gkey; localStorage.setItem(KEY, JSON.stringify(s)); S = load(); S.settings.gkey = key; save(); render(); toast('Đã nhập bản sao lưu');
     } catch { toast('File không hợp lệ'); }
   };
   r.readAsText(e.target.files[0]);

@@ -136,3 +136,6 @@ summary { cursor: pointer; padding: 8px 0; font-weight: 600; }
 
 .toast { position: fixed; left: 50%; bottom: calc(80px + var(--safe-b)); transform: translateX(-50%) translateY(20px); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 12px; opacity: 0; transition: .2s; pointer-events: none; z-index: 20; font-size: 14px; }
 .toast.show { opacity: 1; transform: translateX(-50%); }
+.ok-msg { color: var(--green-ink); font-weight: 600; margin: 8px 0; }
+.note-card textarea { margin: 8px 0; }
+#aiAns p { margin: 6px 0; }
