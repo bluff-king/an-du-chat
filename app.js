@@ -219,7 +219,7 @@ function slotCard(key, name) {
     <div class="row"><h3>${name}</h3><span class="tag">${label}</span></div>
     <ul class="dishes">${list}</ul>
     <div class="actions">
-      ${confirmed ? '' : `<button class="btn primary" data-act="ate" data-slot="${key}">✓ Đã ăn</button>`}
+      ${m.st === 'ok' ? '' : `<button class="btn primary" data-act="ate" data-slot="${key}">${m.st === 'swap' || m.st === 'skip' ? '✓ Ăn đúng thực đơn' : '✓ Đã ăn'}</button>`}
       ${por}
       <button class="btn" data-act="swap" data-slot="${key}">Đổi món</button>
       ${m.st === 'skip' ? '' : `<button class="btn ghost" data-act="skip" data-slot="${key}">Bỏ</button>`}

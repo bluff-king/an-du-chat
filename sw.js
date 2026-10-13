@@ -1,5 +1,5 @@
 // Tăng VERSION mỗi lần sửa code để điện thoại tải bản mới.
-const VERSION = 'v4';
+const VERSION = 'v5';
 const FILES = ['./', 'index.html', 'style.css', 'data.js', 'app.js', 'ai.js', 'manifest.webmanifest',
                'icon-180.png', 'icon-192.png', 'icon-512.png'];
 
