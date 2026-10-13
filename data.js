@@ -86,6 +86,8 @@ const FOODS = {
                 n: [30, 3, 0.2, 0, 0, 1.8, 149, 21, 0.4, 13, 0.9, 1, 13, 0] },
   chuoi:      { name: 'Chuối', src: 'mua', price: 2.5, unit: 'quả', unitG: 90, max: 1260,
                 n: [89, 1.1, 0.3, 0.1, 0, 2.6, 358, 27, 0.15, 5, 0.26, 3, 8.7, 0] },
+  sung:       { name: 'Quả sung', src: 'mua', price: 3, unit: 'g', unitG: 1,
+                n: [74, 0.8, 0.3, 0.1, 0, 2.9, 232, 17, 0.15, 35, 0.4, 7, 2, 0] },
   oi:         { name: 'Ổi', src: 'mua', price: 3, unit: 'quả', unitG: 150, max: 1050,
                 n: [68, 2.6, 1, 0.3, 0, 5.4, 417, 22, 0.23, 18, 0.26, 31, 228, 0] },
   cam:        { name: 'Cam', src: 'mua', price: 3.5, unit: 'quả', unitG: 150, max: 1050,
@@ -152,8 +154,9 @@ const DISHES = {
   gia_xao:        { name: 'Giá xào', kind: 'nha', ing: [['gia', 150], ['dau_an', 8]] },
 
   // Ăn ngoài (ước lượng 1 suất)
-  mi_xao_bo:    { name: 'Mỳ xào bò rau cải', kind: 'ngoai', price: 45,
-                  n: [650, 28, 25, 6, 5, 4, 700, 70, 5.0, 120, 4.0, 150, 30, 0] },
+  // Quán quen: mỳ + bò + rau cải + ~5 quả sung bé (~60 g).
+  mi_xao_bo:    { name: 'Mỳ xào bò rau cải, quả sung', kind: 'ngoai', price: 45,
+                  n: [694, 28.5, 25, 6, 5, 5.7, 840, 80, 5.0, 141, 4.2, 154, 31, 0] },
   bun_ca_ro:    { name: 'Bún/bánh đa cá rô rán', kind: 'ngoai', price: 40,
                   n: [550, 28, 20, 4, 3, 2.5, 600, 60, 2.0, 250, 2.5, 50, 10, 150] },
   pho_bo:       { name: 'Phở bò', kind: 'ngoai', price: 45,
@@ -218,7 +221,7 @@ const TIPS = {
 // Nhóm để gợi ý đổi cùng loại ở trang Đi chợ (vuốt trái một dòng).
 const FOOD_GROUPS = {
   'Rau, củ, nấm': ['rau_muong', 'bap_cai', 'cai_ngot', 'ca_chua', 'hanh_tay', 'ca_rot', 'su_hao', 'sup_lo', 'gia', 'nam_kim_cham', 'nam_huong'],
-  'Quả': ['chuoi', 'oi', 'cam'],
+  'Quả': ['chuoi', 'oi', 'cam', 'sung'],
   'Đạm': ['trung', 'dauphu', 'ga_dui', 'ga_uc', 'gio', 'thit_bam', 'xuc_xich', 'bo'],
   'Khác': ['lac', 'sua_socola', 'sua_kd', 'banhgao', 'bun'],
 };
