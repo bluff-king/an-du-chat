@@ -150,6 +150,8 @@ const T = () => S.settings.targets;
 const fmtNum = (v, unit) => (unit === 'g' && v < 100 ? v.toFixed(1).replace('.0', '') : Math.round(v).toLocaleString('vi-VN'));
 
 // ---------- Tiện ích giao diện ----------
+// Sắp xếp [id, {name}] theo ABC tiếng Việt.
+const byName = (a, b) => a[1].name.localeCompare(b[1].name, 'vi');
 const $ = sel => document.querySelector(sel);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg) {
@@ -236,10 +238,10 @@ function viewToday() {
 // Thẻ quản lý món & nguyên liệu tự tạo — dùng ở tab Hôm nay và Thực đơn. Mọi bảng chọn món đọc chung S.custom.
 let myKind = 'nha';
 function myCard() {
-  const customs = Object.entries(S.custom).map(([id, d]) => `<li><span>${esc(d.name)}</span>
+  const customs = Object.entries(S.custom).sort(byName).map(([id, d]) => `<li><span>${esc(d.name)}</span>
       <select class="kind-sel" data-kindsel="${id}" aria-label="Loại món">${Object.entries(KIND_NAMES).map(([k, n]) => `<option value="${k}" ${k === d.kind ? 'selected' : ''}>${n}</option>`).join('')}</select>
       <button class="x" data-act="delCustom" data-id="${id}" aria-label="Xoá">×</button></li>`).join('');
-  const myFoods = Object.entries(S.foods || {}).map(([id, f]) => `<li><span>${esc(f.name)}</span><small class="muted">nguyên liệu${f.src === 'que' ? ' · quê' : ''}</small>
+  const myFoods = Object.entries(S.foods || {}).sort(byName).map(([id, f]) => `<li><span>${esc(f.name)}</span><small class="muted">nguyên liệu${f.src === 'que' ? ' · quê' : ''}</small>
       <button class="x" data-act="delFood" data-id="${id}" aria-label="Xoá">×</button></li>`).join('');
   return `<section class="card">
       <h3>Món & nguyên liệu của tôi</h3>
@@ -570,8 +572,7 @@ function drawPicker() {
 function drawPickList() {
   const p = picker;
   const q = bareText(p.q);
-  // Món tự tạo lên đầu, mới nhất trước.
-  const all = [...Object.entries(S.custom).reverse(), ...Object.entries(DISHES)];
+  const all = Object.entries({ ...DISHES, ...S.custom }).sort(byName);
   const items = q ? all.filter(([, d]) => bareText(d.name).includes(q)) : all.filter(([, d]) => d.kind === p.kind);
   $('#pk_kinds').hidden = !!q;
   $('#pk_list').innerHTML = `<div class="pick-list">${items.map(([id, d]) => `<button class="pick" data-act="pickAdd" data-id="${id}">${S.custom[id] ? '★ ' : ''}${esc(d.name)}${d.price ? `<small>~${d.price}k</small>` : q ? `<small>${KIND_NAMES[d.kind]}</small>` : ''}</button>`).join('')}</div>
@@ -596,7 +597,8 @@ function openFoodPicker(from, kind, g) {
   $('#sheet').innerHTML = `<div class="sheet-body">
     <div class="row"><h3>Đổi ${esc(FOODS[from].name)} thành…</h3><button class="x" data-act="pickClose" aria-label="Đóng">×</button></div>
     ${order.map(([name, ids]) => {
-      const list = ids.filter(id => id !== from && FOODS[id] && !S.settings.hidden.includes(id));
+      const list = ids.filter(id => id !== from && FOODS[id] && !S.settings.hidden.includes(id))
+        .sort((a, b) => FOODS[a].name.localeCompare(FOODS[b].name, 'vi'));
       return list.length ? `<p class="muted">${name}</p><div class="pick-list">${list.map(opt).join('')}</div>` : '';
     }).join('')}
     <button class="btn ghost wide danger" data-act="shopDel" data-food="${from}">${kind === 'plan' ? 'Không mua (nhà còn)' : 'Bỏ, không mua thêm'}</button></div>`;
