@@ -439,7 +439,7 @@ function viewPlan() {
   const myFoods = Object.entries(S.foods || {}).map(([id, f]) => `<li>${esc(f.name)} <small class="muted">nguyên liệu${f.src === 'que' ? ' · quê' : ''}</small>
       <button class="x" data-act="delFood" data-id="${id}" aria-label="Xoá">×</button></li>`).join('');
   return `
-    <header class="head plain"><div><h1>Thực đơn tuần</h1><p class="sub">Bấm vào một bữa để sửa thực đơn mẫu (áp cho mọi tuần). Dòng ↳ là những gì tuần này bạn đã ghi khác đi.</p></div></header>
+    <header class="head plain"><div style="flex:1"><div class="row"><h1>Thực đơn tuần</h1><button class="btn sm primary" data-act="newCustom">+ Tạo món</button></div><p class="sub">Bấm vào một bữa để sửa thực đơn mẫu (áp cho mọi tuần). Dòng ↳ là những gì tuần này bạn đã ghi khác đi.</p></div></header>
     ${days}
     <section class="card"><div class="row"><h3>Món của tôi</h3><button class="btn sm" data-act="newCustom">+ Tạo món</button></div>
       ${customs || myFoods ? `<ul class="extras">${customs}${myFoods}</ul>` : '<p class="muted">Tự tạo món từ nguyên liệu (ví dụ món quê mới, món có thêm nấm, mộc nhĩ). Thiếu nguyên liệu thì bấm “+ Nguyên liệu mới” trong lúc tạo món.</p>'}</section>
@@ -534,6 +534,7 @@ function drawPicker() {
     <div class="picked">${p.sel.length ? p.sel.map((id, i) => `<button class="chip on" data-act="pickRm" data-i="${i}">${esc(dishName(id))} ×</button>`).join('') : '<span class="muted">Chưa chọn món nào</span>'}</div>
     <div class="seg small">${p.kinds.map(k => `<button class="${k === p.kind ? 'on' : ''}" data-act="pickKind" data-k="${k}">${KIND_NAMES[k]}</button>`).join('')}</div>
     <div class="pick-list">${items.map(([id, d]) => `<button class="pick" data-act="pickAdd" data-id="${id}">${esc(d.name)}${d.price ? `<small>~${d.price}k</small>` : ''}</button>`).join('')}</div>
+    <button class="btn ghost sm" data-act="newCustom">+ Món chưa có? Tạo món mới</button>
     <button class="btn primary wide" data-act="pickSave">Lưu</button></div>`;
   $('#sheet').classList.add('show');
 }
