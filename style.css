@@ -174,3 +174,5 @@ summary { cursor: pointer; padding: 8px 0; font-weight: 600; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 4px; background: var(--blue-ink); vertical-align: middle; }
 h3 small { font-family: var(--sans); font-weight: 400; }
 .card.inset { background: var(--bg); margin-top: 10px; }
+#pk_q { margin: 4px 0 10px; }
+#pk_list .btn.wide { margin-top: 10px; }

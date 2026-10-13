@@ -244,3 +244,16 @@ Trả JSON: {"n":{...đủ 14 khóa},"price":0,"unit":"gói/quả/bó/g","unitG"
     note: d.note || '',
   };
 }
+
+// Món gõ tay trong bảng chọn (VD "nấm xào tỏi"): ước lượng dinh dưỡng cho 1 suất.
+async function estimateDish(name, onStatus) {
+  const system = `Bạn là chuyên gia dinh dưỡng Việt Nam. Ước lượng dinh dưỡng cho 1 SUẤT món ăn người dùng gõ (khẩu phần thực tế của nam thanh niên Việt Nam, 1 đĩa/1 bát; không gồm cơm trừ khi tên món có cơm/bún/phở/mỳ). Món xào/rán: cộng dầu ăn.
+Khóa n: kcal, pro, fat, sat (g), sug (g đường THÊM), fib (g), k, mg, zn, ca, fe (mg), vita (µg RAE), vitc (mg), o3 (mg DHA+EPA).
+Trả JSON: {"n":{...đủ 14 khóa},"price":0}. price = giá 1 suất nếu là món mua ngoài (nghìn đồng), món tự nấu thì 0.`;
+  const { text } = await gemini(system, name, true, onStatus);
+  let d;
+  try { d = JSON.parse(text); } catch (e) { throw new Error('Gemini trả JSON hỏng, thử lại.'); }
+  if (Array.isArray(d)) d = d[0] || {};
+  if (!d.n) throw new Error('Không ước lượng được — thử tên cụ thể hơn.');
+  return { n: NUTRIENTS.map(k => Math.max(0, +d.n[k.key] || 0)), price: Math.max(0, +d.price || 0) };
+}

@@ -527,17 +527,29 @@ function openPicker({ title, selected = [], kinds = ['nha', 'ngoai', 'sang', 'va
 }
 function drawPicker() {
   const p = picker;
-  const all = { ...DISHES, ...S.custom };
-  const items = Object.entries(all).filter(([, d]) => d.kind === p.kind && (!p.q || d.name.toLowerCase().includes(p.q)));
   $('#sheet').innerHTML = `<div class="sheet-body">
     <div class="row"><h3>${esc(p.title)}</h3><button class="x" data-act="pickClose" aria-label="Đóng">×</button></div>
     <div class="picked">${p.sel.length ? p.sel.map((id, i) => `<button class="chip on" data-act="pickRm" data-i="${i}">${esc(dishName(id))} ×</button>`).join('') : '<span class="muted">Chưa chọn món nào</span>'}</div>
-    <div class="seg small">${p.kinds.map(k => `<button class="${k === p.kind ? 'on' : ''}" data-act="pickKind" data-k="${k}">${KIND_NAMES[k]}</button>`).join('')}</div>
-    <div class="pick-list">${items.map(([id, d]) => `<button class="pick" data-act="pickAdd" data-id="${id}">${esc(d.name)}${d.price ? `<small>~${d.price}k</small>` : ''}</button>`).join('')}</div>
-    <button class="btn ghost sm" data-act="newCustom">+ Món chưa có? Tạo món mới</button>
+    <input type="search" id="pk_q" placeholder="🔍 Gõ để tìm, hoặc thêm món mới (VD: nấm xào tỏi)" value="${esc(p.q)}" autocomplete="off">
+    <div class="seg small" id="pk_kinds" ${p.q ? 'hidden' : ''}>${p.kinds.map(k => `<button class="${k === p.kind ? 'on' : ''}" data-act="pickKind" data-k="${k}">${KIND_NAMES[k]}</button>`).join('')}</div>
+    <div id="pk_list"></div>
     <button class="btn primary wide" data-act="pickSave">Lưu</button></div>`;
+  drawPickList();
   $('#sheet').classList.add('show');
 }
+
+// Gõ chữ thì tìm trên mọi nhóm; không thấy thì cho thêm món mới đúng như đã gõ.
+function drawPickList() {
+  const p = picker;
+  const q = bareText(p.q);
+  const all = Object.entries({ ...DISHES, ...S.custom });
+  const items = q ? all.filter(([, d]) => bareText(d.name).includes(q)) : all.filter(([, d]) => d.kind === p.kind);
+  $('#pk_kinds').hidden = !!q;
+  $('#pk_list').innerHTML = `<div class="pick-list">${items.map(([id, d]) => `<button class="pick" data-act="pickAdd" data-id="${id}">${esc(d.name)}${d.price ? `<small>~${d.price}k</small>` : q ? `<small>${KIND_NAMES[d.kind]}</small>` : ''}</button>`).join('')}</div>
+    ${q ? `<button class="btn wide" data-act="quickDish">＋ Thêm “${esc(p.q.trim())}”${S.settings.gkey ? ' (✨ Gemini ước lượng)' : ''}</button><div id="pk_msg"></div>`
+        : '<button class="btn ghost sm" data-act="newCustom">+ Tạo món theo nguyên liệu</button>'}`;
+}
+const bareText = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase().trim();
 function closeSheet() { $('#sheet').classList.remove('show'); $('#sheet').innerHTML = ''; picker = null; }
 
 // ---------- Chọn thực phẩm thay thế (trang Đi chợ) ----------
@@ -751,7 +763,7 @@ document.addEventListener('click', e => {
     }
     case 'delFood': {
       const id = el.dataset.id;
-      const used = Object.values(S.custom).some(d => d.ing.some(([f]) => f === id));
+      const used = Object.values(S.custom).some(d => (d.ing || []).some(([f]) => f === id));
       if (used) { toast('Nguyên liệu đang dùng trong món của bạn — xoá món trước'); break; }
       if (confirm('Xoá nguyên liệu này?')) { delete S.foods[id]; delete FOODS[id]; save(); render(); }
       break;
@@ -759,7 +771,26 @@ document.addEventListener('click', e => {
     case 'delCustom': if (confirm('Xoá món này?')) { delete S.custom[el.dataset.id]; save(); render(); } break;
     case 'pickClose': closeSheet(); break;
     case 'pickKind': picker.kind = el.dataset.k; drawPicker(); break;
-    case 'pickAdd': picker.sel.push(el.dataset.id); drawPicker(); break;
+    case 'pickAdd': picker.sel.push(el.dataset.id); picker.q = ''; drawPicker(); break;
+    case 'quickDish': {
+      const name = picker.q.trim();
+      const kind = picker.kind === 'sang' || picker.kind === 'vat' ? picker.kind : 'nha';
+      const add = d => {
+        const id = 'c_' + Date.now().toString(36);
+        S.custom[id] = { name, kind, ...d };
+        save(); picker.sel.push(id); picker.q = ''; drawPicker(); toast(`Đã thêm “${name}” — lần sau gõ là thấy`);
+      };
+      if (!S.settings.gkey) {
+        // Không có AI: lấy nguyên liệu trùng tên nếu có, không thì tạo món chưa có số liệu.
+        const f = Object.entries(FOODS).find(([, x]) => bareText(name).includes(bareText(x.name).split(' ')[0]));
+        add(f ? { ing: [[f[0], defaultG(f[0])]] } : { n: zero() });
+        break;
+      }
+      el.disabled = true;
+      estimateDish(name, msg => { el.textContent = msg; }).then(r => add({ n: r.n, ...(r.price ? { price: r.price } : {}) }))
+        .catch(err => { el.disabled = false; el.textContent = `＋ Thêm “${name}”`; $('#pk_msg').innerHTML = `<p class="note">${esc(err.message)}</p>`; });
+      break;
+    }
     case 'pickRm': picker.sel.splice(+el.dataset.i, 1); drawPicker(); break;
     case 'pickSave': { const p = picker; closeSheet(); p.onSave(p.sel); break; }
     case 'saveHealth': {
@@ -833,7 +864,10 @@ document.addEventListener('touchend', () => {
   li.dataset.swiped = '1'; setTimeout(() => delete li.dataset.swiped, 400);
 });
 
-document.addEventListener('input', e => { if (e.target.id === 'note') noteDraft = e.target.value; });
+document.addEventListener('input', e => {
+  if (e.target.id === 'note') noteDraft = e.target.value;
+  if (e.target.id === 'pk_q' && picker) { picker.q = e.target.value; drawPickList(); }
+});
 
 document.addEventListener('change', e => {
   if (e.target.id !== 'importFile' || !e.target.files[0]) return;
