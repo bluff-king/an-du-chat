@@ -540,9 +540,10 @@ document.addEventListener('click', e => {
       noteDraft = text;
       if (!text) { toast('Gõ gì đó vào ô Ghi nhanh trước'); break; }
       el.disabled = true; el.textContent = 'Đang phân tích…';
-      parseNote(text).then(r => {
+      parseNote(text, msg => { $('#noteMsg').innerHTML = `<p class="muted">${esc(msg)}</p>`; }).then(r => {
         noteDraft = ''; whatEatHtml = ''; weekAiHtml = ''; render();
-        $('#noteMsg').innerHTML = `<p class="ok-msg">Đã ghi ${r.count} món vào ${r.meals} bữa (✨). Sai thì bấm “Hoàn tác” ở bữa đó.</p>${r.note ? `<p class="muted">${esc(r.note)}</p>` : ''}`;
+        $('#noteMsg').innerHTML = `<p class="ok-msg">Đã ghi ${r.count} món (✨):</p><ul class="tips">${r.where.map(w => `<li>${esc(w)}</li>`).join('')}</ul>
+          <p class="muted">Sai thì bấm “Ăn đúng thực đơn” hoặc “Hoàn tác” ở bữa đó. — ${esc(r.model)}</p>${r.note ? `<p class="muted">${esc(r.note)}</p>` : ''}`;
       }).catch(err => { el.disabled = false; el.textContent = '✨ Phân tích & ghi vào'; $('#noteMsg').innerHTML = `<p class="note">${esc(err.message)}</p>`; });
       break;
     }
@@ -562,14 +563,14 @@ document.addEventListener('click', e => {
     }
     case 'askAI':
       el.disabled = true; el.textContent = 'Gemini đang nghĩ…';
-      askWhatToEat().then(r => { el.remove(); $('#aiAns').innerHTML = mdLite(r.text) + `<p class="muted">— ${esc(r.model)}</p>`; whatEatHtml = $('#whatEat').innerHTML; })
+      askWhatToEat(msg => { el.textContent = msg; }).then(r => { el.remove(); $('#aiAns').innerHTML = mdLite(r.text) + `<p class="muted">— ${esc(r.model)}</p>`; whatEatHtml = $('#whatEat').innerHTML; })
         .catch(err => { el.disabled = false; el.textContent = '✨ Hỏi Gemini gợi ý món cụ thể'; $('#aiAns').innerHTML = `<p class="note">${esc(err.message)}</p>`; });
       break;
     case 'theme': S.settings.theme = el.dataset.v; save(); applyTheme(); render(); break;
     case 'accent': S.settings.accent = el.dataset.v; save(); applyTheme(); render(); break;
     case 'aiWeek':
       el.disabled = true; el.textContent = 'Gemini đang xem cả tuần…';
-      askWeekPlan().then(r => {
+      askWeekPlan(msg => { el.textContent = msg; }).then(r => {
         weekAiHtml = mdLite(r.text) + `<p class="muted">— ${esc(r.model)}</p><button class="btn sm" data-act="aiWeekAgain">Hỏi lại</button>`;
         $('#weekAi').innerHTML = weekAiHtml;
       }).catch(err => { el.disabled = false; el.textContent = '✨ Gợi ý các ngày còn lại'; $('#weekAi').insertAdjacentHTML('beforeend', `<p class="note">${esc(err.message)}</p>`); });

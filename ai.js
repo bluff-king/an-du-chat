@@ -5,8 +5,10 @@
 const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta/models';
 // Gói free hay báo 503 với model mới nhất; quá tải thì lùi dần xuống model nhẹ hơn (như Bù Hè).
 const GEMINI_FALLBACKS = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
+const GEMINI_TIMEOUT = 20000;
+const FALLBACK_STATUS = [429, 500, 502, 503, 504];
 
-async function gemini(system, user, json) {
+async function gemini(system, user, json, onStatus) {
   const key = S.settings.gkey;
   if (!key) throw new Error('Chưa có Gemini API key — dán vào mục Sức khỏe → Cài đặt.');
   const model = S.settings.gmodel || GEMINI_FALLBACKS[0];
@@ -18,14 +20,24 @@ async function gemini(system, user, json) {
     generationConfig: { temperature: 0.3, maxOutputTokens: 12000, ...(json ? { responseMimeType: 'application/json' } : {}) },
   });
   let res, used;
-  for (const m of chain) {
+  for (const [idx, m] of chain.entries()) {
     used = m;
+    const last = idx === chain.length - 1;
+    if (onStatus) onStatus(idx ? `Model trước quá tải, đang thử ${m}…` : `Đang hỏi ${m}…`);
+    // Model mới hay treo im lặng thay vì báo 503 (đo 2026-10-13: >2 phút), nên tự cắt sau 20 giây.
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), GEMINI_TIMEOUT);
     try {
       res = await fetch(`${GEMINI_API}/${m}:generateContent`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body });
-    } catch (e) { throw new Error('Không kết nối được Gemini — kiểm tra mạng.'); }
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body, signal: ctl.signal });
+    } catch (e) {
+      if (e.name === 'AbortError' && !last) continue;
+      throw new Error(e.name === 'AbortError' ? 'Gemini đang quá tải (cả 3 model không trả lời). Thử lại sau vài phút.'
+                                              : 'Không kết nối được Gemini — kiểm tra mạng.');
+    } finally { clearTimeout(timer); }
     if (res.ok) break;
-    if (![500, 503].includes(res.status) || m === chain[chain.length - 1]) throw new Error(await explain(res, m));
+    // Quá tải / lỗi máy chủ / hết lượt của riêng model này → lùi xuống model nhẹ hơn.
+    if (!FALLBACK_STATUS.includes(res.status) || last) throw new Error(await explain(res, m));
   }
   const data = await res.json();
   const cand = (data.candidates || [{}])[0];
@@ -51,7 +63,7 @@ function foodTable() {
 }
 
 // ---------- Ghi tự do → các món theo ngày/bữa ----------
-async function parseNote(text) {
+async function parseNote(text, onStatus) {
   const ws = weekStart(curDay);
   const days = [...Array(7)].map((_, i) => `${WD[parse(addDays(ws, i)).getDay()]} = ${addDays(ws, i)}`).join(', ');
   const system = `Bạn là chuyên gia dinh dưỡng Việt Nam. Người dùng ghi nhật ký ăn uống tự do bằng tiếng Việt.
@@ -64,7 +76,7 @@ Tuần này: ${days}. Hôm nay là ${curDay}. Nếu không nói ngày thì là $
 bua: sang | trua | toi | vat (ăn vặt/đồ uống). Không nói bữa thì đoán theo món; một ngày có 2 món chính khác nhau (vd mỳ và cơm) mà không nói bữa thì chia cho trưa và tối.
 BỮA SÁNG cố định theo thực đơn (bánh gạo, chuối, sữa) — app tự tính, KHÔNG tạo item bua=sang cho các món đó và không đoán bữa sáng. Chỉ tạo item bua=sang khi người dùng nói rõ sáng ăn món KHÁC (vd bánh dày giò, phở).
 Trả về JSON: {"items":[{"ngay":"YYYY-MM-DD","bua":"trua","ten":"Gà rán (150 g)","n":{"kcal":0,"pro":0,...đủ 14 khóa}}],"ghi_chu":"1 câu nếu có gì không chắc"}`;
-  const { text: out, model } = await gemini(system, text, true);
+  const { text: out, model } = await gemini(system, text, true, onStatus);
   let data;
   try { data = JSON.parse(out); } catch (e) { throw new Error('Gemini trả JSON hỏng, thử lại.'); }
   if (Array.isArray(data)) data = { items: data };   // model lite đôi khi trả mảng trần
@@ -72,19 +84,20 @@ Trả về JSON: {"items":[{"ngay":"YYYY-MM-DD","bua":"trua","ten":"Gà rán (15
   const items = (data.items || []).filter(x => x && x.ten && x.n
     && !(x.bua === 'sang' && /bánh gạo|chuối|sữa/i.test(x.ten)));
   if (!items.length) throw new Error('Không tách được món nào — viết rõ hơn chút?');
-  const touched = new Set();
+  const touched = new Set(), where = [];
   for (const x of items) {
-    const date = /^\d{4}-\d{2}-\d{2}$/.test(x.ngay) ? x.ngay : curDay;
-    const slot = SLOTS.some(s => s.key === x.bua) ? x.bua : 'vat';
+    const date = normDate(x.ngay, ws);
+    const slot = normSlot(x.bua);
     const n = NUTRIENTS.map(k => Math.max(0, +x.n[k.key] || 0));
     S.logs[date] = S.logs[date] || {};
     const id = date + slot;
     // Lần đầu chạm vào bữa này trong lượt phân tích: thay hẳn thực đơn của bữa đó.
     if (!touched.has(id)) { S.logs[date][slot] = { st: 'swap', por: 1, dishes: [], items: [] }; touched.add(id); }
     S.logs[date][slot].items.push({ name: x.ten, n });
+    where.push(`${fmtDay(date)} – ${SLOTS.find(s => s.key === slot).name}: ${x.ten}`);
   }
   save();
-  return { count: items.length, meals: touched.size, note: data.ghi_chu || '', model };
+  return { count: items.length, meals: touched.size, note: data.ghi_chu || '', model, where };
 }
 
 // ---------- Còn phải ăn gì ----------
@@ -116,7 +129,7 @@ function quickFixes(gaps) {
   return out;
 }
 
-async function askWhatToEat() {
+async function askWhatToEat(onStatus) {
   const t = dayTotals(curDay);
   const w = weekTotals(weekStart(curDay));
   const fmt = (v, days) => FOCUS.concat(['sat', 'sug', 'kcal']).map(k => {
@@ -137,7 +150,7 @@ ${eaten}
 Thêm: ${extras(curDay).map(x => dishName(x.d)).join(', ') || 'không'}
 Tổng hôm nay (gồm phần dự kiến): ${fmt(t.proj, 1)}
 Cả tuần (gồm dự kiến): ${fmt(w.proj, 7)}`;
-  return gemini(system, user, false);
+  return gemini(system, user, false, onStatus);
 }
 
 // Markdown tối giản cho câu trả lời: gạch đầu dòng + in đậm.
@@ -156,7 +169,7 @@ function portionLabel(f) {
 }
 
 // Gợi ý cho các ngày còn lại của tuần, dựa trên đã ăn + lịch đã ghi trước + thực đơn.
-async function askWeekPlan() {
+async function askWeekPlan(onStatus) {
   const ws = weekStart(todayKey());
   const today = todayKey();
   const lines = [];
@@ -189,5 +202,23 @@ Cả tuần:
 ${lines.join('\n')}
 
 Ước tính cả tuần (gồm phần dự kiến): ${status}`;
-  return gemini(system, user, false);
+  return gemini(system, user, false, onStatus);
+}
+
+// Model lite đôi khi trả "tối", "Tối", "thứ 7"… thay vì đúng khóa — chuẩn hóa lại.
+const bare = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase().trim();
+function normSlot(b) {
+  const t = bare(b);
+  if (/^sang/.test(t)) return 'sang';
+  if (/^trua/.test(t)) return 'trua';
+  if (/^toi|chieu|dem/.test(t)) return 'toi';
+  return 'vat';
+}
+function normDate(d, ws) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+  const t = bare(d);
+  if (/chu nhat|cn/.test(t)) return addDays(ws, 6);
+  const m = t.match(/thu\s*(\d)/);
+  if (m && +m[1] >= 2 && +m[1] <= 7) return addDays(ws, +m[1] - 2);
+  return curDay;
 }
