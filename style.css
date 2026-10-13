@@ -176,3 +176,5 @@ h3 small { font-family: var(--sans); font-weight: 400; }
 .card.inset { background: var(--bg); margin-top: 10px; }
 #pk_q { margin: 4px 0 10px; }
 #pk_list .btn.wide { margin-top: 10px; }
+.kind-sel { width: auto; display: inline-block; margin: 0 4px 0 auto; padding: 4px 6px; font-size: 13px; }
+.extras li > span { flex: 1; }

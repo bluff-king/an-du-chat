@@ -312,7 +312,7 @@ function shopping() {
       for (const id of m.dishes) {
         const ds = dish(id);
         if (!ds) continue;
-        if (ds.n) { outCost += ds.price || 0; continue; }
+        if (ds.n || ds.kind === 'ngoai') { outCost += ds.price || 0; continue; }
         for (const [f0, g] of ds.ing) {
           const f = subFood(f0, sh.subs);
           if (FOODS[f] && FOODS[f].src === 'mua' && !sh.have.includes(f)) need[f] = (need[f] || 0) + g * m.por;
@@ -434,7 +434,8 @@ function viewPlan() {
       ${open ? slots : `<p class="muted one">${esc(['trua', 'toi'].map(k => (p[k] || []).filter(id => id !== 'com').map(dishName).join(', ')).join(' / '))}</p>`}
     </section>`;
   }).join('');
-  const customs = Object.entries(S.custom).map(([id, d]) => `<li>${esc(d.name)} <small class="muted">${KIND_NAMES[d.kind]}</small>
+  const customs = Object.entries(S.custom).map(([id, d]) => `<li><span>${esc(d.name)}</span>
+      <select class="kind-sel" data-kindsel="${id}" aria-label="Loại món">${Object.entries(KIND_NAMES).map(([k, n]) => `<option value="${k}" ${k === d.kind ? 'selected' : ''}>${n}</option>`).join('')}</select>
       <button class="x" data-act="delCustom" data-id="${id}" aria-label="Xoá">×</button></li>`).join('');
   const myFoods = Object.entries(S.foods || {}).map(([id, f]) => `<li>${esc(f.name)} <small class="muted">nguyên liệu${f.src === 'que' ? ' · quê' : ''}</small>
       <button class="x" data-act="delFood" data-id="${id}" aria-label="Xoá">×</button></li>`).join('');
@@ -546,7 +547,9 @@ function drawPickList() {
   const items = q ? all.filter(([, d]) => bareText(d.name).includes(q)) : all.filter(([, d]) => d.kind === p.kind);
   $('#pk_kinds').hidden = !!q;
   $('#pk_list').innerHTML = `<div class="pick-list">${items.map(([id, d]) => `<button class="pick" data-act="pickAdd" data-id="${id}">${esc(d.name)}${d.price ? `<small>~${d.price}k</small>` : q ? `<small>${KIND_NAMES[d.kind]}</small>` : ''}</button>`).join('')}</div>
-    ${q ? `<button class="btn wide" data-act="quickDish">＋ Thêm “${esc(p.q.trim())}”${S.settings.gkey ? ' (✨ Gemini ước lượng)' : ''}</button><div id="pk_msg"></div>`
+    ${q ? `<p class="muted">Không thấy? Thêm món mới — chọn loại:</p>
+      <div class="seg small">${Object.entries(KIND_NAMES).map(([k, n]) => `<button class="${k === (p.qKind || p.kind) ? 'on' : ''}" data-act="qKind" data-k="${k}">${n}</button>`).join('')}</div>
+      <button class="btn wide" data-act="quickDish">＋ Thêm “${esc(p.q.trim())}”${S.settings.gkey ? ' (✨ Gemini ước lượng)' : ''}</button><div id="pk_msg"></div>`
         : '<button class="btn ghost sm" data-act="newCustom">+ Tạo món theo nguyên liệu</button>'}`;
 }
 const bareText = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase().trim();
@@ -585,7 +588,8 @@ function openCustom() {
   $('#sheet').innerHTML = `<div class="sheet-body">
     <div class="row"><h3>Tạo món</h3><button class="x" data-act="pickClose" aria-label="Đóng">×</button></div>
     <label>Tên món<input type="text" id="c_name" placeholder="VD: Súp gà nấm"></label>
-    <label>Loại<select id="c_kind">${['nha', 'sang', 'vat'].map(k => `<option value="${k}">${KIND_NAMES[k]}</option>`).join('')}</select></label>
+    <div class="form"><label>Loại<select id="c_kind">${['nha', 'ngoai', 'sang', 'vat'].map(k => `<option value="${k}">${KIND_NAMES[k]}</option>`).join('')}</select></label>
+      <label>Giá 1 suất (k, nếu mua)<input type="number" inputmode="numeric" id="c_price" placeholder="VD: 30"></label></div>
     <p class="muted">Nguyên liệu cho 1 suất. Để trống gam = 1 phần vừa (1 quả trứng, 1 củ cà rốt, 100 g thịt…).</p>
     <div id="c_ings">${ingRow()}${ingRow()}${ingRow()}</div>
     <div class="actions"><button class="btn sm" data-act="addIng">+ Dòng</button>
@@ -730,7 +734,8 @@ document.addEventListener('click', e => {
       if (!name) { toast('Chưa có tên món'); $('#c_name').focus(); break; }
       if (!ing.length) { toast('Chọn ít nhất 1 nguyên liệu'); break; }
       const id = 'c_' + Date.now().toString(36);
-      S.custom[id] = { name, kind: $('#c_kind').value, ing };
+      const price = +$('#c_price').value;
+      S.custom[id] = { name, kind: $('#c_kind').value, ing, ...(price > 0 ? { price } : {}) };
       const wd = $('#c_wd').value, sl = $('#c_slot').value;
       if (wd !== '') { const w = +wd; S.plan[w] = { ...(S.plan[w] || {}), [sl]: [...((S.plan[w] || {})[sl] || []), id] }; }
       save(); closeSheet(); render(); toast(wd !== '' ? `Đã tạo món và thêm vào ${WD[+wd]}` : 'Đã tạo món — chọn nó ở mục Món nhà khi sửa thực đơn');
@@ -772,9 +777,10 @@ document.addEventListener('click', e => {
     case 'pickClose': closeSheet(); break;
     case 'pickKind': picker.kind = el.dataset.k; drawPicker(); break;
     case 'pickAdd': picker.sel.push(el.dataset.id); picker.q = ''; drawPicker(); break;
+    case 'qKind': picker.qKind = el.dataset.k; drawPickList(); break;
     case 'quickDish': {
       const name = picker.q.trim();
-      const kind = picker.kind === 'sang' || picker.kind === 'vat' ? picker.kind : 'nha';
+      const kind = picker.qKind || picker.kind;
       const add = d => {
         const id = 'c_' + Date.now().toString(36);
         S.custom[id] = { name, kind, ...d };
@@ -787,7 +793,7 @@ document.addEventListener('click', e => {
         break;
       }
       el.disabled = true;
-      estimateDish(name, msg => { el.textContent = msg; }).then(r => add({ n: r.n, ...(r.price ? { price: r.price } : {}) }))
+      estimateDish(kind === 'ngoai' ? name + ' (mua ăn ngoài)' : name, msg => { el.textContent = msg; }).then(r => add({ n: r.n, ...(r.price ? { price: r.price } : {}) }))
         .catch(err => { el.disabled = false; el.textContent = `＋ Thêm “${name}”`; $('#pk_msg').innerHTML = `<p class="note">${esc(err.message)}</p>`; });
       break;
     }
@@ -870,6 +876,8 @@ document.addEventListener('input', e => {
 });
 
 document.addEventListener('change', e => {
+  const ks = e.target.dataset && e.target.dataset.kindsel;
+  if (ks && S.custom[ks]) { S.custom[ks].kind = e.target.value; save(); toast(`Đã chuyển sang ${KIND_NAMES[e.target.value]}`); return; }
   if (e.target.id !== 'importFile' || !e.target.files[0]) return;
   const r = new FileReader();
   r.onload = () => {
