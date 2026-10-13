@@ -110,7 +110,8 @@ function quickFixes(gaps) {
         return { id, f, g: g1, gain: f.n[NI[g.k]] * g1 / 100 };
       })
       .sort((a, b) => b.gain - a.gain)[0];
-    if (best) out.push({ ...g, food: best.f.name + (best.f.src === 'que' ? ' (đồ quê)' : ''), grams: best.g, gain: best.gain });
+    if (best) out.push({ ...g, food: best.f.name + (best.f.src === 'que' ? ' (đồ quê)' : ''), grams: best.g, gain: best.gain,
+                         portion: portionLabel(best.f) });
   }
   return out;
 }
@@ -144,4 +145,49 @@ function mdLite(s) {
   return esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
     .split('\n').map(l => /^\s*[-*•]\s+/.test(l) ? `<li>${l.replace(/^\s*[-*•]\s+/, '')}</li>` : (l.trim() ? `<p>${l}</p>` : ''))
     .join('').replace(/(<li>.*?<\/li>)+/g, m => `<ul class="tips">${m}</ul>`);
+}
+
+// Phần ăn nói bằng lời: 1 quả / 1 bịch / 1 đĩa… thay vì gam.
+function portionLabel(f) {
+  const u = f.unitG || 0;
+  if (u > 1 && u < 300) return '1 ' + f.unit.replace(/\s+\d.*$/, '');
+  if (u >= 300) return '1 đĩa';
+  return '1 phần';
+}
+
+// Gợi ý cho các ngày còn lại của tuần, dựa trên đã ăn + lịch đã ghi trước + thực đơn.
+async function askWeekPlan() {
+  const ws = weekStart(todayKey());
+  const today = todayKey();
+  const lines = [];
+  for (let i = 0; i < 7; i++) {
+    const d = addDays(ws, i);
+    const tag = d < today ? 'đã qua' : d === today ? 'hôm nay' : 'sắp tới';
+    const meals = SLOTS.map(({ key, name }) => {
+      const m = meal(d, key);
+      const what = [...m.dishes.map(dishName), ...(m.items || []).map(x => x.name)].join(', ') || 'bỏ';
+      const how = m.st === 'plan' ? 'theo thực đơn' : m.st === 'assumed' ? 'chưa xác nhận' : d > today ? 'LỊCH ĐÃ GHI' : 'đã ăn';
+      return `${name} [${how}]: ${what}`;
+    }).join('; ');
+    const ex = extras(d).map(x => dishName(x.d)).join(', ');
+    lines.push(`${fmtDay(d)} (${tag}) — ${meals}${ex ? '; thêm: ' + ex : ''}`);
+  }
+  const w = weekTotals(ws).proj;
+  const status = FOCUS.filter(k => k !== 'fe').concat(['sat', 'sug'])
+    .map(k => `${NUTRIENTS[NI[k]].name}: ${level(k, w[NI[k]] / (T()[k] * 7))}`).join('; ');
+  const system = `Bạn là chuyên gia dinh dưỡng, nói tiếng Việt ngắn gọn, thân thiện, thực tế.
+Người dùng không muốn con số mg/gam. Hãy gợi ý NÊN ĂN MÓN GÌ cho các ngày còn lại trong tuần (từ hôm nay tới Chủ nhật),
+dựa trên những gì đã ăn và các bữa đã lên lịch (LỊCH ĐÃ GHI, vd đi ăn ngoài, liên hoan).
+- Nếu có bữa nặng (đồ nướng, chiên, chè, rượu bia) thì nói rõ hôm đó và hôm trước/sau nên ăn nhẹ hơn, nhiều rau hơn, bớt món gì.
+- Bù các chất đang thiếu bằng món cụ thể, quen thuộc, rẻ, dễ mua ở Hà Nội; phần ăn nói bằng lời (1 đĩa rau, 1 quả ổi, 1 bịch sữa).
+- Bữa sáng cố định, không cần đổi. Giữ phần lớn thực đơn, chỉ đề xuất thêm/đổi 1–2 thứ mỗi ngày.
+- Định dạng: mỗi ngày 1 gạch đầu dòng bắt đầu bằng **Thứ …:**, cuối cùng 1 dòng "Tuần này nhớ:" tổng kết. Không chẩn đoán bệnh.
+${S.settings.prefs ? 'Sở thích & điều kiện: ' + S.settings.prefs : ''}
+${S.settings.exam && S.settings.sendExam ? 'Ghi chú khám sức khỏe: ' + S.settings.exam : ''}`;
+  const user = `Hôm nay: ${fmtDay(today)}.
+Cả tuần:
+${lines.join('\n')}
+
+Ước tính cả tuần (gồm phần dự kiến): ${status}`;
+  return gemini(system, user, false);
 }

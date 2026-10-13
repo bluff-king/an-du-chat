@@ -14,7 +14,7 @@ function freshState() {
     custom: {},
     settings: { budget: 450, hidden: [], targets: { ...DEFAULT_TARGETS }, assume: true, recheck: '', exam: '',
                 gkey: '', gmodel: 'gemini-3.5-flash', prefs: '', sendExam: false,
-                theme: 'auto', accent: 'blue' },
+                theme: 'auto', accent: 'blue', showNum: false },
   };
 }
 
@@ -103,10 +103,13 @@ function dayTotals(date) {
   for (const { key } of SLOTS) {
     const m = meal(date, key);
     const v = mealNut(m);
-    if (m.st !== 'plan') addInto(eaten, v);
+    if (m.st !== 'plan' && date <= todayKey()) addInto(eaten, v);
     addInto(proj, v);
   }
-  for (const x of extras(date)) { addInto(eaten, dishNut(x.d), x.q); addInto(proj, dishNut(x.d), x.q); }
+  for (const x of extras(date)) {
+    if (date <= todayKey()) addInto(eaten, dishNut(x.d), x.q);
+    addInto(proj, dishNut(x.d), x.q);
+  }
   return { eaten, proj };
 }
 
@@ -141,6 +144,7 @@ let shopMode = 'this';
 let planOpen = null;
 let noteDraft = '';
 let whatEatHtml = '';
+let weekAiHtml = '';
 
 function render() {
   document.querySelectorAll('.tabbar button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
@@ -157,13 +161,21 @@ function bar(key, eaten, proj, days) {
   let cls = 'ok';
   if (meta.limit) cls = pp > 1 ? 'bad' : 'ok';
   else cls = pp >= 0.9 ? 'ok' : pp >= 0.6 ? 'mid' : 'bad';
-  const pct = Math.round((meta.limit ? proj : proj) / target * 100);
+  const pct = Math.round(proj / target * 100);
+  const right = S.settings.showNum
+    ? `${fmtNum(proj / days, meta.unit)} / ${fmtNum(T()[key], meta.unit)} ${meta.unit}${meta.limit ? ' (tối đa)' : ''} · <b>${pct}%</b>`
+    : `<b>${level(key, proj / target)}</b>`;
   return `<div class="bar ${cls}">
-    <div class="bar-head"><span>${meta.name}</span>
-      <span class="num">${fmtNum(proj / days, meta.unit)} / ${fmtNum(T()[key], meta.unit)} ${meta.unit}${meta.limit ? ' (tối đa)' : ''} · <b>${pct}%</b></span></div>
+    <div class="bar-head"><span>${meta.name}</span><span class="num">${right}</span></div>
     <div class="track"><div class="fill proj" style="width:${Math.min(pp, 1) * 100}%"></div>
       <div class="fill eat" style="width:${Math.min(pe, 1) * 100}%"></div>
       ${meta.limit ? '' : '<div class="mark"></div>'}</div></div>`;
+}
+
+// Ước lượng có sai số, nên mặc định chỉ hiện mức; số chi tiết bật trong Cài đặt.
+function level(key, r) {
+  if (NUTRIENTS[NI[key]].limit) return r > 1 ? 'Quá' : r > 0.8 ? 'Sát ngưỡng' : 'Ổn';
+  return r < 0.6 ? 'Thiếu nhiều' : r < 0.9 ? 'Hơi thiếu' : 'Đủ';
 }
 
 function bars(eaten, proj, days, keys) {
@@ -185,7 +197,7 @@ function viewToday() {
     </header>
     <section class="card note-card">
       <h3>Ghi nhanh</h3>
-      <p class="muted">Gõ tự do, một ngày hay cả tuần đều được. VD: “thứ 2 trưa mỳ xào bò, rau cải, quả sung; tối cơm gà tự rán”.</p>
+      <p class="muted">Gõ tự do, ngày đã qua hay lịch sắp tới đều được. VD: “thứ 2 trưa mỳ xào bò, rau cải, quả sung; tối cơm gà tự rán” hoặc “thứ 7 tối đi ăn ếch, thịt nướng, chè”.</p>
       <textarea id="note" rows="3" placeholder="Hôm nay ăn gì…">${esc(noteDraft)}</textarea>
       <div class="actions"><button class="btn primary" data-act="aiParse">✨ Phân tích & ghi vào</button></div>
       <div id="noteMsg"></div>
@@ -201,7 +213,7 @@ function viewToday() {
     </section>
     <section class="card">
       <h3>Trong ngày</h3>
-      <p class="muted">Đậm = đã ăn · nhạt = còn theo kế hoạch. Vạch dọc = mục tiêu.</p>
+      <p class="muted">Đậm = đã ăn · nhạt = còn theo kế hoạch.</p>
       ${bars(t.eaten, t.proj, 1, ['k', 'mg', 'zn', 'ca', 'fib', 'pro', 'vita', 'vitc', 'sat', 'sug'])}
     </section>`;
 }
@@ -228,7 +240,7 @@ function slotCard(key, name) {
 }
 
 function setLog(slot, val) {
-  whatEatHtml = '';
+  whatEatHtml = ''; weekAiHtml = '';
   S.logs[curDay] = S.logs[curDay] || {};
   if (val === null) delete S.logs[curDay][slot]; else S.logs[curDay][slot] = val;
   save(); render();
@@ -249,6 +261,10 @@ function viewWeek() {
         <p class="sub">${isThis ? 'Tuần này' : `<a data-act="weekNow">về tuần này</a>`}${w.pending ? ` · ${w.pending} bữa chưa xác nhận` : ''}</p></div>
       <button class="nav" data-act="week" data-n="1" aria-label="Tuần sau">›</button>
     </header>
+    ${isThis ? `<section class="card accent"><h3>Các ngày còn lại nên ăn gì?</h3>
+      <p class="muted">Dựa trên những gì đã ăn và lịch đã ghi trước (VD “thứ 7 tối đi ăn ếch, thịt nướng, chè” ở ô Ghi nhanh).</p>
+      ${S.settings.gkey ? `<div id="weekAi">${weekAiHtml || '<button class="btn primary wide" data-act="aiWeek">✨ Gợi ý các ngày còn lại</button>'}</div>`
+        : '<p class="muted">Cần Gemini key (Sức khỏe → Cài đặt).</p>'}</section>` : ''}
     ${tips.length ? `<section class="card warn"><h3>Cần chú ý</h3><ul class="tips">${tips.map(t => `<li>${esc(t)}</li>`).join('')}</ul>
       <button class="btn primary" data-act="goShop">Xem gợi ý đi chợ</button></section>`
       : `<section class="card good"><h3>Tuần này đủ chất 👏</h3><p>Các chất chính đều đạt ≥ 90% mục tiêu.</p></section>`}
@@ -257,7 +273,7 @@ function viewWeek() {
       ${bars(w.eaten, w.proj, 7, ['k', 'mg', 'zn', 'ca', 'fe', 'fib', 'pro'])}</section>
     <section class="card"><h3>Cho mắt</h3>${bars(w.eaten, w.proj, 7, ['vita', 'vitc', 'o3'])}</section>
     <section class="card"><h3>Giới hạn (tốt cho gan và mỡ máu)</h3>${bars(w.eaten, w.proj, 7, ['sat', 'sug'])}
-      <p class="muted">Năng lượng TB: ${fmtNum(w.proj[0] / 7)} kcal/ngày (mục tiêu ~${T().kcal}).</p></section>`;
+      ${S.settings.showNum ? `<p class="muted">Năng lượng TB: ${fmtNum(w.proj[0] / 7)} kcal/ngày (mục tiêu ~${T().kcal}).</p>` : ''}</section>`;
 }
 
 // ---------- Đi chợ ----------
@@ -417,6 +433,7 @@ function viewHealth() {
         <p class="muted">Key chỉ lưu trên máy này, không có trong file sao lưu. Gói free của Google có thể dùng nội dung gửi lên để cải thiện sản phẩm.</p>
         ${st.gkey ? '<button class="btn ghost danger sm" data-act="delKey">Xoá key</button>' : ''}
       </details>
+      <label class="check"><input type="checkbox" id="s_showNum" ${st.showNum ? 'checked' : ''}> Hiện số liệu chi tiết (mg, g, %)</label>
       <label class="check"><input type="checkbox" id="s_assume" ${st.assume ? 'checked' : ''}> Bữa đã qua mà chưa điền thì coi như ăn đúng thực đơn</label>
       <details><summary>Thực phẩm không muốn được gợi ý</summary><div class="hidden-list">
         ${Object.entries(FOODS).filter(([, f]) => f.src === 'mua').map(([id, f]) =>
@@ -524,7 +541,7 @@ document.addEventListener('click', e => {
       if (!text) { toast('Gõ gì đó vào ô Ghi nhanh trước'); break; }
       el.disabled = true; el.textContent = 'Đang phân tích…';
       parseNote(text).then(r => {
-        noteDraft = ''; whatEatHtml = ''; render();
+        noteDraft = ''; whatEatHtml = ''; weekAiHtml = ''; render();
         $('#noteMsg').innerHTML = `<p class="ok-msg">Đã ghi ${r.count} món vào ${r.meals} bữa (✨). Sai thì bấm “Hoàn tác” ở bữa đó.</p>${r.note ? `<p class="muted">${esc(r.note)}</p>` : ''}`;
       }).catch(err => { el.disabled = false; el.textContent = '✨ Phân tích & ghi vào'; $('#noteMsg').innerHTML = `<p class="note">${esc(err.message)}</p>`; });
       break;
@@ -535,7 +552,9 @@ document.addEventListener('click', e => {
       whatEatHtml = gaps.length
         ? `<p class="muted">Tính cả các bữa còn lại theo thực đơn hôm nay:</p><ul class="tips">${fixes.map(x => {
             const n = NUTRIENTS[NI[x.k]];
-            return `<li><b>${n.name}</b> còn thiếu ${fmtNum(x.need, n.unit)} ${n.unit} → ${esc(x.food)} ${x.grams} g (+${fmtNum(x.gain, n.unit)})</li>`; }).join('')}</ul>`
+            return S.settings.showNum
+              ? `<li><b>${n.name}</b> còn thiếu ${fmtNum(x.need, n.unit)} ${n.unit} → ${esc(x.food)} ${x.grams} g (+${fmtNum(x.gain, n.unit)})</li>`
+              : `<li><b>${n.name}</b> ${x.ratio < 0.6 ? 'thiếu nhiều' : 'hơi thiếu'} → ${esc(x.food)} (${x.portion})</li>`; }).join('')}</ul>`
         : '<p class="ok-msg">Hôm nay đã đủ các chất chính 👍</p>';
       if (S.settings.gkey) whatEatHtml += '<button class="btn wide" data-act="askAI">✨ Hỏi Gemini gợi ý món cụ thể</button><div id="aiAns"></div>';
       $('#whatEat').innerHTML = whatEatHtml;
@@ -548,6 +567,14 @@ document.addEventListener('click', e => {
       break;
     case 'theme': S.settings.theme = el.dataset.v; save(); applyTheme(); render(); break;
     case 'accent': S.settings.accent = el.dataset.v; save(); applyTheme(); render(); break;
+    case 'aiWeek':
+      el.disabled = true; el.textContent = 'Gemini đang xem cả tuần…';
+      askWeekPlan().then(r => {
+        weekAiHtml = mdLite(r.text) + `<p class="muted">— ${esc(r.model)}</p><button class="btn sm" data-act="aiWeekAgain">Hỏi lại</button>`;
+        $('#weekAi').innerHTML = weekAiHtml;
+      }).catch(err => { el.disabled = false; el.textContent = '✨ Gợi ý các ngày còn lại'; $('#weekAi').insertAdjacentHTML('beforeend', `<p class="note">${esc(err.message)}</p>`); });
+      break;
+    case 'aiWeekAgain': weekAiHtml = ''; render(); break;
     case 'delKey': if (confirm('Xoá Gemini API key khỏi máy?')) { S.settings.gkey = ''; save(); render(); } break;
     case 'shopMode': shopMode = el.dataset.v; render(); break;
     case 'togglePlan': planOpen = planOpen === +el.dataset.wd ? null : +el.dataset.wd; render(); break;
@@ -589,6 +616,7 @@ document.addEventListener('click', e => {
       const st = S.settings;
       st.budget = +$('#s_budget').value || st.budget;
       st.assume = $('#s_assume').checked;
+      st.showNum = $('#s_showNum').checked;
       st.recheck = $('#s_recheck').value;
       st.exam = $('#s_exam').value;
       if ($('#s_gkey').value.trim()) st.gkey = $('#s_gkey').value.trim();

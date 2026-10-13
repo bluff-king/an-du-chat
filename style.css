@@ -161,3 +161,4 @@ summary { cursor: pointer; padding: 8px 0; font-weight: 600; }
 .swatches { display: flex; gap: 10px; margin: 6px 0 12px; }
 .swatch { width: 40px; height: 40px; border-radius: 20px; border: 2px solid var(--line); cursor: pointer; }
 .swatch.on { border-color: var(--ink); box-shadow: 0 0 0 3px var(--card) inset; }
+.bar.ok .num b { color: var(--green-ink); } .bar.mid .num b { color: var(--yellow-ink); } .bar.bad .num b { color: var(--red-ink); }
