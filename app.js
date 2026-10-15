@@ -551,15 +551,19 @@ function chart(hist) {
 
 // ---------- Bảng chọn món ----------
 let picker = null;
-function openPicker({ title, selected = [], kinds = ['nha', 'ngoai', 'sang', 'vat'], onSave }) {
-  picker = { title, sel: [...selected], kind: kinds[0], kinds, onSave, q: '' };
+// items: món ✨ do Gemini tách ở ô Ghi nhanh — hiện cùng chỗ, giữ lại khi lưu trừ khi bấm × bỏ.
+function openPicker({ title, selected = [], items = [], kinds = ['nha', 'ngoai', 'sang', 'vat'], onSave }) {
+  picker = { title, sel: [...selected], items: [...items], kind: kinds[0], kinds, onSave, q: '' };
   drawPicker();
 }
 function drawPicker() {
   const p = picker;
   $('#sheet').innerHTML = `<div class="sheet-body">
     <div class="row"><h3>${esc(p.title)}</h3><button class="x" data-act="pickClose" aria-label="Đóng">×</button></div>
-    <div class="picked">${p.sel.length ? p.sel.map((id, i) => `<button class="chip on" data-act="pickRm" data-i="${i}">${esc(dishName(id))} ×</button>`).join('') : '<span class="muted">Chưa chọn món nào</span>'}</div>
+    <div class="picked">${p.sel.length || p.items.length ? [
+      ...p.sel.map((id, i) => `<button class="chip on" data-act="pickRm" data-i="${i}">${esc(dishName(id))} ×</button>`),
+      ...p.items.map((x, i) => `<button class="chip on" data-act="pickRmItem" data-i="${i}">✨ ${esc(x.name)} ×</button>`),
+    ].join('') : '<span class="muted">Chưa chọn món nào</span>'}</div>
     <input type="search" id="pk_q" placeholder="🔍 Gõ để tìm, hoặc thêm món mới (VD: nấm xào tỏi)" value="${esc(p.q)}" autocomplete="off">
     <div class="seg small" id="pk_kinds" ${p.q ? 'hidden' : ''}>${p.kinds.map(k => `<button class="${k === p.kind ? 'on' : ''}" data-act="pickKind" data-k="${k}">${KIND_NAMES[k]}</button>`).join('')}</div>
     <div id="pk_list"></div>
@@ -656,9 +660,9 @@ document.addEventListener('click', e => {
     }
     case 'swap': {
       const m = meal(curDay, slot);
-      openPicker({ title: `Đổi món — ${SLOTS.find(s => s.key === slot).name}`, selected: m.dishes,
+      openPicker({ title: `Đổi món — ${SLOTS.find(s => s.key === slot).name}`, selected: m.dishes, items: m.items || [],
         kinds: slot === 'sang' ? ['sang', 'ngoai', 'nha', 'vat'] : slot === 'vat' ? ['vat', 'sang', 'nha', 'ngoai'] : ['ngoai', 'nha', 'sang', 'vat'],
-        onSave: sel => setLog(slot, { st: 'swap', por: m.por || 1, dishes: sel }) });
+        onSave: (sel, items) => setLog(slot, { st: 'swap', por: m.por || 1, dishes: sel, items }) });
       break;
     }
     case 'addExtra':
@@ -828,7 +832,8 @@ document.addEventListener('click', e => {
       break;
     }
     case 'pickRm': picker.sel.splice(+el.dataset.i, 1); drawPicker(); break;
-    case 'pickSave': { const p = picker; closeSheet(); p.onSave(p.sel); break; }
+    case 'pickRmItem': picker.items.splice(+el.dataset.i, 1); drawPicker(); break;
+    case 'pickSave': { const p = picker; closeSheet(); p.onSave(p.sel, p.items); break; }
     case 'saveHealth': {
       const ws = weekStart(todayKey());
       const v = id => $(id).value.trim();
