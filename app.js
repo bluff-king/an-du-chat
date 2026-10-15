@@ -238,10 +238,10 @@ function viewToday() {
 // Thẻ quản lý món & nguyên liệu tự tạo — dùng ở tab Hôm nay và Thực đơn. Mọi bảng chọn món đọc chung S.custom.
 let myKind = 'nha';
 function myCard() {
-  const customs = Object.entries(S.custom).sort(byName).map(([id, d]) => `<li><span>${esc(d.name)}</span>
+  const customs = Object.entries(S.custom).filter(([, d]) => !d.archived).sort(byName).map(([id, d]) => `<li><span>${esc(d.name)}</span>
       <select class="kind-sel" data-kindsel="${id}" aria-label="Loại món">${Object.entries(KIND_NAMES).map(([k, n]) => `<option value="${k}" ${k === d.kind ? 'selected' : ''}>${n}</option>`).join('')}</select>
       <button class="x" data-act="delCustom" data-id="${id}" aria-label="Xoá">×</button></li>`).join('');
-  const myFoods = Object.entries(S.foods || {}).sort(byName).map(([id, f]) => `<li><span>${esc(f.name)}</span><small class="muted">nguyên liệu${f.src === 'que' ? ' · quê' : ''}</small>
+  const myFoods = Object.entries(S.foods || {}).filter(([, f]) => !f.archived).sort(byName).map(([id, f]) => `<li><span>${esc(f.name)}</span><small class="muted">nguyên liệu${f.src === 'que' ? ' · quê' : ''}</small>
       <button class="x" data-act="delFood" data-id="${id}" aria-label="Xoá">×</button></li>`).join('');
   return `<section class="card">
       <h3>Món & nguyên liệu của tôi</h3>
@@ -576,7 +576,7 @@ function drawPicker() {
 function drawPickList() {
   const p = picker;
   const q = bareText(p.q);
-  const all = Object.entries({ ...DISHES, ...S.custom }).sort(byName);
+  const all = Object.entries({ ...DISHES, ...S.custom }).filter(([, d]) => !d.archived).sort(byName);
   const items = q ? all.filter(([, d]) => bareText(d.name).includes(q)) : all.filter(([, d]) => d.kind === p.kind);
   $('#pk_kinds').hidden = !!q;
   $('#pk_list').innerHTML = `<div class="pick-list">${items.map(([id, d]) => `<button class="pick" data-act="pickAdd" data-id="${id}">${S.custom[id] ? '★ ' : ''}${esc(d.name)}${d.price ? `<small>~${d.price}k</small>` : q ? `<small>${KIND_NAMES[d.kind]}</small>` : ''}</button>`).join('')}</div>
@@ -613,7 +613,7 @@ function openFoodPicker(from, kind, g) {
 // 1 phần vừa khi để trống ô gam: 1 quả/bìa/củ…, rau cả bó thì 150 g, còn lại 100 g.
 const defaultG = f => { const u = FOODS[f].unitG || 0; return u > 1 && u < 300 ? u : u >= 300 ? 150 : 100; };
 const foodOpts = () => '<option value="">— chọn nguyên liệu —</option>' +
-  Object.entries(FOODS).sort((a, b) => a[1].name.localeCompare(b[1].name, 'vi'))
+  Object.entries(FOODS).filter(([, f]) => !f.archived).sort((a, b) => a[1].name.localeCompare(b[1].name, 'vi'))
     .map(([id, f]) => `<option value="${id}">${esc(f.name)}${f.src === 'que' ? ' (quê)' : ''}</option>`).join('');
 const ingRow = () => `<div class="ing"><select>${foodOpts()}</select><input type="number" inputmode="numeric" placeholder="gam (trống = 1 phần)"></div>`;
 
@@ -801,14 +801,27 @@ document.addEventListener('click', e => {
       }).catch(err => { el.disabled = false; el.textContent = '✨ Gemini ước lượng & thêm'; $('#nf_msg').innerHTML = `<p class="note">${esc(err.message)}</p>`; });
       break;
     }
+    // Xoá = cất đi: biến khỏi danh sách, nhưng bữa đã ghi vẫn giữ tên và dinh dưỡng.
     case 'delFood': {
       const id = el.dataset.id;
-      const used = Object.values(S.custom).some(d => (d.ing || []).some(([f]) => f === id));
-      if (used) { toast('Nguyên liệu đang dùng trong món của bạn — xoá món trước'); break; }
-      if (confirm('Xoá nguyên liệu này?')) { delete S.foods[id]; delete FOODS[id]; save(); render(); }
+      const user = Object.values(S.custom).find(d => !d.archived && (d.ing || []).some(([f]) => f === id));
+      if (user) { toast(`Đang dùng trong món “${user.name}” — xoá món đó trước`); break; }
+      if (confirm('Xoá nguyên liệu này khỏi danh sách?')) { S.foods[id].archived = true; FOODS[id].archived = true; save(); render(); }
       break;
     }
-    case 'delCustom': if (confirm('Xoá món này?')) { delete S.custom[el.dataset.id]; save(); render(); } break;
+    case 'delCustom': {
+      const id = el.dataset.id;
+      const inPlan = ORDER.filter(wd => SLOTS.some(({ key }) => ((S.plan[wd] || {})[key] || []).includes(id)));
+      const msg = `Xoá “${S.custom[id].name}” khỏi danh sách?
+Các bữa đã ghi vẫn giữ nguyên.` +
+        (inPlan.length ? `
+Món này cũng được gỡ khỏi thực đơn mẫu: ${inPlan.map(wd => WD[wd]).join(', ')}.` : '');
+      if (!confirm(msg)) break;
+      S.custom[id].archived = true;
+      for (const wd of inPlan) for (const { key } of SLOTS) if (S.plan[wd][key]) S.plan[wd][key] = S.plan[wd][key].filter(x => x !== id);
+      save(); render(); toast('Đã xoá khỏi danh sách');
+      break;
+    }
     case 'pickClose': closeSheet(); break;
     case 'pickKind': picker.kind = el.dataset.k; drawPicker(); break;
     case 'pickAdd': picker.sel.push(el.dataset.id); picker.q = ''; drawPicker(); break;
